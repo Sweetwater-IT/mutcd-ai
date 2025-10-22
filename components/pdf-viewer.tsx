@@ -86,7 +86,7 @@ function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFVie
         onSignsDetected(signs)
       }
     } catch (error) {
-      console.error("[v0] Error detecting signs:", error)
+        console.error("[v0] Error detecting signs:", error)
     } finally {
       setIsProcessing(false)
     }
@@ -184,4 +184,4 @@ function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFVie
   )
 }
 
-export default PDFViewer;  // Add this line at the end
+export default PDFViewer;
