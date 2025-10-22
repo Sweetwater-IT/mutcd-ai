@@ -1,103 +1,201 @@
-import Image from "next/image";
+"use client"
+
+export const dynamicConfig = "force-dynamic"
+
+import { useState } from "react"
+import { PDFUploader } from "@/components/pdf-uploader"
+import dynamic from "next/dynamic"
+import { SignList } from "@/components/sign-list"
+import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
+import { FileText, Upload, ChevronDown } from "lucide-react"
+import type { DetectedSign } from "@/lib/opencv-detector"
+import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
+interface PDFWithSigns {
+  file: File
+  signs: DetectedSign[]
+  selectedPage: number
+}
+
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => ({ default: mod.PDFViewer })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">Loading PDF viewer...</p>
+      </div>
+    </div>
+  ),
+})
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [pdfFiles, setPdfFiles] = useState<PDFWithSigns[]>([])
+  const [selectedPdfIndex, setSelectedPdfIndex] = useState<number>(0)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleFileUpload = (files: File[]) => {
+    const newPdfs = files.map((file) => ({
+      file,
+      signs: [],
+      selectedPage: 1,
+    }))
+    setPdfFiles((prev) => [...prev, ...newPdfs])
+    // Select the first newly uploaded file
+    if (pdfFiles.length === 0) {
+      setSelectedPdfIndex(0)
+    }
+  }
+
+  const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
+    setPdfFiles((prev) =>
+      prev.map((pdf, index) => {
+        if (index === selectedPdfIndex) {
+          const updatedSigns = [...pdf.signs, ...detectedSigns]
+
+          if (updatedSigns.length > 0) {
+            // Convert file to base64 for storage
+            const reader = new FileReader()
+            reader.onload = () => {
+              const base64 = reader.result as string
+              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64)
+            }
+            reader.readAsDataURL(pdf.file)
+          }
+
+          return { ...pdf, signs: updatedSigns }
+        }
+        return pdf
+      }),
+    )
+  }
+
+  const handleSignUpdate = (updatedSigns: DetectedSign[]) => {
+    setPdfFiles((prev) =>
+      prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf)),
+    )
+  }
+
+  const handlePageChange = (page: number) => {
+    setPdfFiles((prev) => prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, selectedPage: page } : pdf)))
+  }
+
+  const currentPdf = pdfFiles[selectedPdfIndex]
+
+  const handleRecentFileSelect = async (fileData: string, fileName: string) => {
+    try {
+      // Convert base64 back to File object
+      const response = await fetch(fileData)
+      const blob = await response.blob()
+      const file = new File([blob], fileName, { type: "application/pdf" })
+      handleFileUpload([file])
+    } catch (error) {
+      console.error("Failed to load recent file:", error)
+    }
+  }
+
+  const handleDone = () => {
+    setPdfFiles([])
+    setSelectedPdfIndex(0)
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b border-border bg-card">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+                <FileText className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold text-foreground">MUTCD Sign Detector</h1>
+                <p className="text-sm text-muted-foreground">Traffic Plan Analysis Tool</p>
+              </div>
+            </div>
+            {pdfFiles.length > 0 && (
+              <div className="flex items-center gap-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2 hover:bg-muted/50"
+                    >
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-foreground">{currentPdf.file.name}</span>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[300px]">
+                    {pdfFiles.map((pdf, index) => (
+                      <DropdownMenuItem
+                        key={index}
+                        onClick={() => setSelectedPdfIndex(index)}
+                        className={`flex items-center gap-2 ${index === selectedPdfIndex ? "bg-muted" : ""}`}
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span className="truncate">{pdf.file.name}</span>
+                        {index === selectedPdfIndex && <span className="ml-auto text-xs text-primary">Active</span>}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="outline" size="sm" onClick={() => document.getElementById("pdf-upload")?.click()}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Add More
+                </Button>
+                <Button variant="default" size="sm" onClick={handleDone}>
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-6">
+        {pdfFiles.length === 0 ? (
+          <div className="space-y-8">
+            <div className="flex justify-center pt-8">
+              <PDFUploader onFileUpload={handleFileUpload} />
+            </div>
+            <RecentFiles onFileSelect={handleRecentFileSelect} />
+          </div>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+            {/* PDF Viewer with Crop Box */}
+            <div className="space-y-4">
+              <PDFViewer
+                file={currentPdf.file}
+                onSignsDetected={handleSignsDetected}
+                selectedPage={currentPdf.selectedPage}
+                onPageChange={handlePageChange}
+              />
+            </div>
+
+            {/* Sign List Sidebar */}
+            <div className="space-y-4">
+              <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
+            </div>
+          </div>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      <input
+        id="pdf-upload"
+        type="file"
+        accept="application/pdf"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files || [])
+          if (files.length > 0) {
+            handleFileUpload(files)
+          }
+          e.target.value = "" // Reset input
+        }}
+      />
     </div>
-  );
+  )
 }
