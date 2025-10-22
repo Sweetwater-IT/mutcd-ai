@@ -1,23 +1,21 @@
 "use client"
-
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
-import dynamic from "next/dynamic"
+import type { PDFViewerProps } from "@/components/pdf-viewer"
+import dynamic from "next/dynamic" 
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
 interface PDFWithSigns {
   file: File
   signs: DetectedSign[]
   selectedPage: number
 }
-
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => (mod as any).PDFViewer), {
-  ssr: false,
+const PDFViewer = dynamic<PDFViewerProps>(() => import("@/components/pdf-viewer").then((mod) => mod.default), {
+  ssr: false, 
   loading: () => (
     <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
       <div className="text-center">
@@ -27,11 +25,9 @@ const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => 
     </div>
   ),
 })
-
 export default function Home() {
   const [pdfFiles, setPdfFiles] = useState<PDFWithSigns[]>([])
   const [selectedPdfIndex, setSelectedPdfIndex] = useState<number>(0)
-
   const handleFileUpload = (files: File[]) => {
     const newPdfs = files.map((file) => ({
       file,
@@ -44,7 +40,6 @@ export default function Home() {
       setSelectedPdfIndex(0)
     }
   }
-
   const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => {
@@ -65,19 +60,15 @@ export default function Home() {
       }),
     )
   }
-
   const handleSignUpdate = (updatedSigns: DetectedSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf)),
     )
   }
-
   const handlePageChange = (page: number) => {
     setPdfFiles((prev) => prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, selectedPage: page } : pdf)))
   }
-
   const currentPdf = pdfFiles[selectedPdfIndex]
-
   const handleRecentFileSelect = async (fileData: string, fileName: string) => {
     try {
       // Convert base64 back to File object
@@ -89,12 +80,10 @@ export default function Home() {
       console.error("Failed to load recent file:", error)
     }
   }
-
   const handleDone = () => {
     setPdfFiles([])
     setSelectedPdfIndex(0)
   }
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -162,7 +151,7 @@ export default function Home() {
           <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
             {/* PDF Viewer with Crop Box */}
             <div className="space-y-4">
-              <PDFViewer
+              <PDFViewer 
                 file={currentPdf.file}
                 onSignsDetected={handleSignsDetected}
                 selectedPage={currentPdf.selectedPage}
