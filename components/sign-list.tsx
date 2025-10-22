@@ -1,5 +1,4 @@
 "use client"
-
 import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,42 +7,37 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Trash2, Edit2, Check, X, Download, Upload, Loader2 } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"  // Change to this (remove use-toast import)
 
 interface SignListProps {
   signs: DetectedSign[]
   onSignsUpdate: (signs: DetectedSign[]) => void
   pdfFileName?: string
 }
-
 export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [isUploading, setIsUploading] = useState(false)
-  const { toast } = useToast()
+  // Remove: const { toast } = useToast()
 
   const handleEdit = (sign: DetectedSign) => {
     setEditingId(sign.id)
     setEditValue(sign.type)
   }
-
   const handleSaveEdit = (id: string) => {
     const updatedSigns = signs.map((sign) => (sign.id === id ? { ...sign, type: editValue } : sign))
     onSignsUpdate(updatedSigns)
     setEditingId(null)
     setEditValue("")
   }
-
   const handleCancelEdit = () => {
     setEditingId(null)
     setEditValue("")
   }
-
   const handleDelete = (id: string) => {
     const updatedSigns = signs.filter((sign) => sign.id !== id)
     onSignsUpdate(updatedSigns)
   }
-
   const handleExport = () => {
     const exportData = signs.map((sign) => ({
       type: sign.type,
@@ -51,14 +45,12 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
       location: `(${sign.boundingBox.x}, ${sign.boundingBox.y})`,
       size: `${sign.boundingBox.width}x${sign.boundingBox.height}`,
     }))
-
     const csv = [
       ["Sign Type", "Confidence", "Location", "Size"],
       ...exportData.map((row) => [row.type, row.confidence, row.location, row.size]),
     ]
       .map((row) => row.join(","))
       .join("\n")
-
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -67,7 +59,6 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
     a.click()
     URL.revokeObjectURL(url)
   }
-
   const handleUploadToBidX = async () => {
     setIsUploading(true)
     try {
@@ -87,7 +78,6 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
         })),
         totalSigns: signs.length,
       }
-
       const response = await fetch("/api/upload-to-bidx", {
         method: "POST",
         headers: {
@@ -95,29 +85,22 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
         },
         body: JSON.stringify(payload),
       })
-
       if (!response.ok) {
         throw new Error("Failed to upload to BidX")
       }
-
       const result = await response.json()
-
-      toast({
-        title: "Upload Successful",
+      toast.success("Upload Successful", {  // Change to this
         description: `Successfully uploaded ${signs.length} signs to BidX`,
       })
     } catch (error) {
       console.error("[v0] BidX upload error:", error)
-      toast({
-        title: "Upload Failed",
+      toast.error("Upload Failed", {  // Change to this
         description: error instanceof Error ? error.message : "Failed to upload to BidX. Please try again.",
-        variant: "destructive",
       })
     } finally {
       setIsUploading(false)
     }
   }
-
   return (
     <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -147,7 +130,6 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
           </div>
         )}
       </div>
-
       <ScrollArea className="flex-1">
         {signs.length === 0 ? (
           <div className="flex h-full min-h-[300px] items-center justify-center p-8">
@@ -179,7 +161,6 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
                       className="h-16 w-16 rounded border border-border object-cover"
                     />
                   </div>
-
                   {/* Sign Details */}
                   <div className="flex-1 space-y-2">
                     {editingId === sign.id ? (
@@ -217,7 +198,6 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
                         </div>
                       </div>
                     )}
-
                     <div className="text-xs text-muted-foreground">
                       Position: ({Math.round(sign.boundingBox.x)}, {Math.round(sign.boundingBox.y)}) • Size:{" "}
                       {Math.round(sign.boundingBox.width)}×{Math.round(sign.boundingBox.height)}px
