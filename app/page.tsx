@@ -1,10 +1,11 @@
 "use client"
+
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
 import type { PDFViewerProps } from "@/components/pdf-viewer"
 import dynamic from "next/dynamic"
 import { SignList } from "@/components/sign-list"
-import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
+import { RecentFiles, uploadToSupabase, updateRecentFile } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown, Crop } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ interface PDFWithSigns {
   file: File
   signs: DetectedSign[]
   selectedPage: number
+  supabaseId?: string  // Track Supabase record ID
 }
 
 const PDFViewer = dynamic<PDFViewerProps>(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
@@ -32,12 +34,18 @@ export default function Home() {
   const [pdfFiles, setPdfFiles] = useState<PDFWithSigns[]>([])
   const [selectedPdfIndex, setSelectedPdfIndex] = useState<number>(0)
 
-  const handleFileUpload = (files: File[]) => {
-    const newPdfs = files.map((file) => ({
-      file,
-      signs: [],
-      selectedPage: 1,
-    }))
+  const handleFileUpload = async (files: File[]) => {
+    const newPdfsPromises = files.map(async (file) => {
+      const supabaseId = await uploadToSupabase(file, 0, "not-started")
+      return {
+        file,
+        signs: [],
+        selectedPage: 1,
+        supabaseId,
+      }
+    })
+
+    const newPdfs = await Promise.all(newPdfsPromises)
     setPdfFiles((prev) => [...prev, ...newPdfs])
     // Select the first newly uploaded file
     if (pdfFiles.length === 0) {
@@ -51,13 +59,8 @@ export default function Home() {
         if (index === selectedPdfIndex) {
           const updatedSigns = [...pdf.signs, ...detectedSigns]
           if (updatedSigns.length > 0) {
-            // Convert file to base64 for storage
-            const reader = new FileReader()
-            reader.onload = () => {
-              const base64 = reader.result as string
-              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64)
-            }
-            reader.readAsDataURL(pdf.file)
+            // Update Supabase with new sign count
+            updateRecentFile(pdf.file.name, updatedSigns.length)
           }
           return { ...pdf, signs: updatedSigns }
         }
@@ -78,13 +81,12 @@ export default function Home() {
 
   const currentPdf = pdfFiles[selectedPdfIndex]
 
-  const handleRecentFileSelect = async (fileData: string, fileName: string) => {
+  const handleRecentFileSelect = async (fileUrl: string, fileName: string) => {
     try {
-      // Convert base64 back to File object
-      const response = await fetch(fileData)
+      const response = await fetch(fileUrl)
       const blob = await response.blob()
       const file = new File([blob], fileName, { type: "application/pdf" })
-      handleFileUpload([file])
+      await handleFileUpload([file])
     } catch (error) {
       console.error("Failed to load recent file:", error)
     }
@@ -154,7 +156,6 @@ export default function Home() {
           </div>
         </div>
       </header>
-
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         {pdfFiles.length === 0 ? (
@@ -192,7 +193,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-
             {/* Recent Files */}
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
@@ -223,7 +223,6 @@ export default function Home() {
                 onPageChange={handlePageChange}
               />
             </div>
-
             {/* Sign List Sidebar */}
             <div className="space-y-4">
               <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
@@ -237,10 +236,10 @@ export default function Home() {
         accept="application/pdf"
         multiple
         className="hidden"
-        onChange={(e) => {
+        onChange={async (e) => {
           const files = Array.from(e.target.files || [])
           if (files.length > 0) {
-            handleFileUpload(files)
+            await handleFileUpload(files)
           }
           e.target.value = "" // Reset input
         }}
