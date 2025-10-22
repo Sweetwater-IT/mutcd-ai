@@ -1,5 +1,4 @@
 "use client"
-export const dynamic = 'force-dynamic'  // Change this line (remove "Config")
 
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
