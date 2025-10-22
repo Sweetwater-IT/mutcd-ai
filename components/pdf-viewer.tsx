@@ -20,7 +20,7 @@ export interface PDFViewerProps {
   onPageChange: (page: number) => void
 }
 function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null!)
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
   const [numPages, setNumPages] = useState(0)
