@@ -74,7 +74,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
         processed_at: file.processed_at,
         uploaded_to_bidx: file.uploaded_to_bidx,
         detection_status: file.detection_status,
-        file_url: supabase.storage.from('pdfs').getPublicUrl(file.file_path).data.publicUrl,
+        file_url: supabase.storage.from('recent_mutcd_pdfs').getPublicUrl(file.file_path).data.publicUrl,
       })) || []
 
       setRecentFiles(filesWithUrls)
@@ -93,7 +93,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     try {
       const { data: file } = await supabase.from('recent_files').select('file_path').eq('id', id).single()
       if (file?.file_path) {
-        await supabase.storage.from('pdfs').remove([file.file_path])
+        await supabase.storage.from('recent_mutcd_pdfs').remove([file.file_path])
       }
       await supabase.from('recent_files').delete().eq('id', id)
     } catch (err) {
@@ -326,7 +326,7 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
 
     // Upload to storage
     const { error: uploadError } = await supabase.storage
-      .from('pdfs')
+      .from('recent_mutcd_pdfs')
       .upload(filePath, file, { upsert: true })
 
     if (uploadError) throw uploadError
