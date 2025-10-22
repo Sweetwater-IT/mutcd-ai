@@ -1,8 +1,6 @@
 "use client"
-
 import type React from "react"
-import { useEffect } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FileText, Clock, MoreVertical, Pencil, Trash2, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -18,125 +16,109 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { supabase } from "@/lib/supabase"
 
 interface RecentFile {
   id: string
-  fileName: string
-  signCount: number
-  processedAt: string
-  fileData: string // base64 encoded file data
-  uploadedToBidX?: boolean
-  detectionStatus: "not-started" | "successful" | "unsuccessful"
+  file_name: string
+  sign_count: number
+  processed_at: string
+  uploaded_to_bidx?: boolean
+  detection_status: "not-started" | "successful" | "unsuccessful"
+  file_url: string  // Computed public URL
 }
 
 interface RecentFilesProps {
-  onFileSelect: (fileData: string, fileName: string) => void
+  onFileSelect: (fileUrl: string, fileName: string) => void
 }
-
-const MOCK_DATA: RecentFile[] = [
-  {
-    id: "1",
-    fileName: "Main_Street_Traffic_Plan_2024.pdf",
-    signCount: 12,
-    processedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 mins ago
-    fileData: "",
-    uploadedToBidX: true,
-    detectionStatus: "successful",
-  },
-  {
-    id: "2",
-    fileName: "Highway_101_Intersection_Signs.pdf",
-    signCount: 8,
-    processedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-    fileData: "",
-    uploadedToBidX: false,
-    detectionStatus: "successful",
-  },
-  {
-    id: "3",
-    fileName: "Downtown_Parking_Signage.pdf",
-    signCount: 0,
-    processedAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), // 5 hours ago
-    fileData: "",
-    uploadedToBidX: false,
-    detectionStatus: "not-started",
-  },
-  {
-    id: "4",
-    fileName: "School_Zone_Traffic_Control.pdf",
-    signCount: 0,
-    processedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-    fileData: "",
-    uploadedToBidX: false,
-    detectionStatus: "unsuccessful",
-  },
-  {
-    id: "5",
-    fileName: "Bridge_Detour_Signs_Phase2.pdf",
-    signCount: 15,
-    processedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-    fileData: "",
-    uploadedToBidX: true,
-    detectionStatus: "successful",
-  },
-  {
-    id: "6",
-    fileName: "Bike_Lane_Signage_Project.pdf",
-    signCount: 6,
-    processedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days ago
-    fileData: "",
-    uploadedToBidX: false,
-    detectionStatus: "successful",
-  },
-]
 
 export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([])
   const [editingFile, setEditingFile] = useState<RecentFile | null>(null)
   const [editedFileName, setEditedFileName] = useState("")
   const [uploadingFileId, setUploadingFileId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log("[v0] RecentFiles component mounted")
-    const stored = localStorage.getItem("mutcd-recent-files")
-    console.log("[v0] Stored recent files:", stored)
-    if (stored) {
-      try {
-        const files = JSON.parse(stored)
-        console.log("[v0] Parsed recent files:", files)
-        setRecentFiles(files)
-      } catch (error) {
-        console.error("Failed to load recent files:", error)
-      }
-    } else {
-      console.log("[v0] No stored files, loading mock data")
-      setRecentFiles(MOCK_DATA)
+    fetchRecentFiles()
+
+    const channel = supabase
+      .channel('recent_files')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recent_files' }, () => {
+        fetchRecentFiles()
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [])
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const fetchRecentFiles = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const { data, error } = await supabase
+        .from('recent_files')
+        .select('*')
+        .order('processed_at', { ascending: false })
+        .limit(12)
+
+      if (error) throw error
+
+      const filesWithUrls: RecentFile[] = data?.map((file: any) => ({
+        id: file.id,
+        file_name: file.file_name,
+        sign_count: file.sign_count,
+        processed_at: file.processed_at,
+        uploaded_to_bidx: file.uploaded_to_bidx,
+        detection_status: file.detection_status,
+        file_url: supabase.storage.from('pdfs').getPublicUrl(file.file_path).data.publicUrl,
+      })) || []
+
+      setRecentFiles(filesWithUrls)
+    } catch (err) {
+      console.error("Failed to fetch recent files:", err)
+      setError("Failed to load recent files. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const updated = recentFiles.filter((file) => file.id !== id)
-    setRecentFiles(updated)
-    localStorage.setItem("mutcd-recent-files", JSON.stringify(updated))
+    if (!confirm('Delete this file? This will also remove it from storage.')) return
+
+    try {
+      const { data: file } = await supabase.from('recent_files').select('file_path').eq('id', id).single()
+      if (file?.file_path) {
+        await supabase.storage.from('pdfs').remove([file.file_path])
+      }
+      await supabase.from('recent_files').delete().eq('id', id)
+    } catch (err) {
+      console.error("Failed to delete file:", err)
+    }
   }
 
   const handleEdit = (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingFile(file)
-    setEditedFileName(file.fileName)
+    setEditedFileName(file.file_name)
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingFile || !editedFileName.trim()) return
-
-    const updated = recentFiles.map((file) =>
-      file.id === editingFile.id ? { ...file, fileName: editedFileName.trim() } : file,
-    )
-    setRecentFiles(updated)
-    localStorage.setItem("mutcd-recent-files", JSON.stringify(updated))
-    setEditingFile(null)
-    setEditedFileName("")
+    try {
+      await supabase
+        .from('recent_files')
+        .update({ file_name: editedFileName.trim() })
+        .eq('id', editingFile.id)
+      setEditingFile(null)
+      setEditedFileName("")
+    } catch (err) {
+      console.error("Failed to save edit:", err)
+    }
   }
 
   const formatDate = (dateString: string) => {
@@ -146,7 +128,6 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
-
     if (diffMins < 1) return "Just now"
     if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? "s" : ""} ago`
     if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`
@@ -155,14 +136,14 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   }
 
   const getDetectionBadge = (file: RecentFile) => {
-    if (file.detectionStatus === "not-started") {
+    if (file.detection_status === "not-started") {
       return (
         <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
           Detection not started
         </Badge>
       )
     }
-    if (file.detectionStatus === "unsuccessful") {
+    if (file.detection_status === "unsuccessful") {
       return (
         <Badge variant="outline" className="border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">
           Detection unsuccessful
@@ -171,7 +152,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     }
     return (
       <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400">
-        {file.signCount} sign{file.signCount !== 1 ? "s" : ""} detected
+        {file.sign_count} sign{file.sign_count !== 1 ? "s" : ""} detected
       </Badge>
     )
   }
@@ -179,22 +160,20 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const handleUploadToBidX = async (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setUploadingFileId(file.id)
-
     try {
       const response = await fetch("/api/upload-to-bidx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pdfFileName: file.fileName,
+          pdfFileName: file.file_name,
           signs: [], // In real implementation, this would contain the actual sign data
         }),
       })
-
       if (response.ok) {
-        // Update the file's uploadedToBidX status
-        const updated = recentFiles.map((f) => (f.id === file.id ? { ...f, uploadedToBidX: true } : f))
-        setRecentFiles(updated)
-        localStorage.setItem("mutcd-recent-files", JSON.stringify(updated))
+        await supabase
+          .from('recent_files')
+          .update({ uploaded_to_bidx: true })
+          .eq('id', file.id)
       } else {
         console.error("Failed to upload to BidX")
       }
@@ -203,6 +182,14 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     } finally {
       setUploadingFileId(null)
     }
+  }
+
+  if (loading) {
+    return <div className="text-center text-sm text-muted-foreground">Loading recent files...</div>
+  }
+
+  if (error) {
+    return <div className="text-center text-sm text-destructive">{error}</div>
   }
 
   return (
@@ -237,12 +224,12 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                   <tr
                     key={file.id}
                     className="group cursor-pointer transition-colors hover:bg-muted/50"
-                    onClick={() => onFileSelect(file.fileData, file.fileName)}
+                    onClick={() => onFileSelect(file.file_url, file.file_name)}
                   >
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-primary" />
-                        <span className="truncate text-sm font-medium text-foreground">{file.fileName}</span>
+                        <span className="truncate text-sm font-medium text-foreground">{file.file_name}</span>
                       </div>
                     </td>
                     <td className="px-4 py-2">
@@ -250,7 +237,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex">
-                        {file.uploadedToBidX ? (
+                        {file.uploaded_to_bidx ? (
                           <Badge
                             variant="outline"
                             className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400"
@@ -265,7 +252,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                       </div>
                     </td>
                     <td className="px-4 py-2">
-                      <span className="text-xs text-muted-foreground">{formatDate(file.processedAt)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDate(file.processed_at)}</span>
                     </td>
                     <td className="px-4 py-2">
                       <DropdownMenu>
@@ -279,7 +266,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
-                          {file.detectionStatus === "successful" && !file.uploadedToBidX && (
+                          {file.detection_status === "successful" && !file.uploaded_to_bidx && (
                             <DropdownMenuItem
                               onClick={(e) => handleUploadToBidX(file, e)}
                               disabled={uploadingFileId === file.id}
@@ -302,7 +289,6 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
           </div>
         </div>
       )}
-
       <Dialog open={!!editingFile} onOpenChange={(open) => !open && setEditingFile(null)}>
         <DialogContent>
           <DialogHeader>
@@ -332,37 +318,68 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   )
 }
 
-export function saveToRecentFiles(fileName: string, signCount: number, fileData: string, uploadedToBidX = false) {
-  const stored = localStorage.getItem("mutcd-recent-files")
-  let recentFiles: RecentFile[] = []
+// Uploads file to Supabase storage and creates/updates DB entry
+export async function uploadToSupabase(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
+  try {
+    // Unique path
+    const filePath = `${Date.now()}-${file.name}`
 
-  if (stored) {
-    try {
-      recentFiles = JSON.parse(stored)
-    } catch (error) {
-      console.error("Failed to parse recent files:", error)
+    // Upload to storage
+    const { error: uploadError } = await supabase.storage
+      .from('pdfs')
+      .upload(filePath, file, { upsert: true })
+
+    if (uploadError) throw uploadError
+
+    // Check if exists by file_name
+    const { data: existing } = await supabase
+      .from('recent_files')
+      .select('id')
+      .eq('file_name', file.name)
+      .single()
+
+    if (existing) {
+      // Update
+      await supabase
+        .from('recent_files')
+        .update({
+          sign_count: signCount,
+          processed_at: new Date().toISOString(),
+          detection_status: detectionStatus,
+          file_path: filePath,
+        })
+        .eq('id', existing.id)
+    } else {
+      // Insert
+      const { data, error } = await supabase.from('recent_files').insert({
+        file_name: file.name,
+        sign_count: signCount,
+        processed_at: new Date().toISOString(),
+        detection_status: detectionStatus,
+        file_path: filePath,
+      }).select().single()
+
+      if (error) throw error
+      return data.id  // Return ID for later updates
     }
+  } catch (error) {
+    console.error("Failed to upload to Supabase:", error)
   }
+}
 
-  const existingIndex = recentFiles.findIndex((f) => f.fileName === fileName)
-
-  const newFile: RecentFile = {
-    id: Date.now().toString(),
-    fileName,
-    signCount,
-    processedAt: new Date().toISOString(),
-    fileData,
-    uploadedToBidX,
-    detectionStatus: signCount > 0 ? "successful" : "unsuccessful",
+// Updates existing file in DB with new sign count/status
+export async function updateRecentFile(fileName: string, signCount: number) {
+  try {
+    const detectionStatus = signCount > 0 ? "successful" : "unsuccessful"
+    await supabase
+      .from('recent_files')
+      .update({
+        sign_count: signCount,
+        processed_at: new Date().toISOString(),
+        detection_status: detectionStatus,
+      })
+      .eq('file_name', fileName)
+  } catch (error) {
+    console.error("Failed to update recent file:", error)
   }
-
-  if (existingIndex >= 0) {
-    recentFiles[existingIndex] = newFile
-  } else {
-    recentFiles.unshift(newFile)
-  }
-
-  recentFiles = recentFiles.slice(0, 12)
-
-  localStorage.setItem("mutcd-recent-files", JSON.stringify(recentFiles))
 }
