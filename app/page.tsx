@@ -154,19 +154,68 @@ export default function Home() {
           </div>
         </div>
       </header>
+
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         {pdfFiles.length === 0 ? (
-          <div className="space-y-8">
-            <div className="flex justify-center pt-8">
-              <PDFUploader onFileUpload={handleFileUpload} />
+          <div className="mx-auto max-w-5xl space-y-8">
+            {/* Instructions Section */}
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h2 className="mb-4 text-lg font-semibold text-foreground">Getting Started</h2>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    1
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Upload your traffic plan PDF</span> - Click the
+                    "Upload PDF" button in the top right. Multiple files are supported.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    2
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Draw a crop box</span> - Click "Draw Crop Box" and
+                    drag to select the area containing MUTCD signs.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    3
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Review and edit</span> - Check the detected signs in
+                    the sidebar, edit any details, and upload to BidX when ready.
+                  </p>
+                </div>
+              </div>
             </div>
+
+            {/* Recent Files */}
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
             {/* PDF Viewer with Crop Box */}
             <div className="space-y-4">
+              {/* Instructions Banner Above PDF Viewer */}
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-primary/10 p-2">
+                    <Crop className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <h3 className="text-sm font-semibold text-foreground">How to detect signs</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Click <span className="font-medium text-foreground">"Draw Crop Box"</span> above, then drag to
+                      highlight the area containing traffic signs. The system will automatically analyze and detect
+                      MUTCD signs. Review results in the sidebar and edit as needed.
+                    </p>
+                  </div>
+                </div>
+              </div>
               <PDFViewer
                 file={currentPdf.file}
                 onSignsDetected={handleSignsDetected}
@@ -174,6 +223,7 @@ export default function Home() {
                 onPageChange={handlePageChange}
               />
             </div>
+
             {/* Sign List Sidebar */}
             <div className="space-y-4">
               <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
