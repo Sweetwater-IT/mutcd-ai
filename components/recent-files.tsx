@@ -44,8 +44,8 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     fetchRecentFiles()
 
     const channel = supabase
-      .channel('recent_files')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recent_files' }, () => {
+      .channel('recent_mutcd_files')  // Updated table name
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recent_mutcd_files' }, () => {  // Updated
         fetchRecentFiles()
       })
       .subscribe()
@@ -59,13 +59,20 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     try {
       setLoading(true)
       setError(null)
+      console.log("[Debug Fetch] Supabase client initialized, starting query...")
+
       const { data, error } = await supabase
-        .from('recent_files')
+        .from('recent_mutcd_files')  // Updated table name
         .select('*')
         .order('processed_at', { ascending: false })
         .limit(12)
 
-      if (error) throw error
+      console.log("[Debug Fetch] Raw response:", { data, error })
+
+      if (error) {
+        console.error("[Debug Fetch] Supabase error details:", error)
+        throw error
+      }
 
       const filesWithUrls: RecentFile[] = data?.map((file: any) => ({
         id: file.id,
@@ -74,12 +81,13 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
         processed_at: file.processed_at,
         uploaded_to_bidx: file.uploaded_to_bidx,
         detection_status: file.detection_status,
-        file_url: supabase.storage.from('recent_mutcd_pdfs').getPublicUrl(file.file_path).data.publicUrl,
+        file_url: supabase.storage.from('recent_mutcd_files').getPublicUrl(file.file_path).data.publicUrl,  // Updated bucket
       })) || []
 
+      console.log("[Debug Fetch] Processed files:", filesWithUrls)
       setRecentFiles(filesWithUrls)
     } catch (err) {
-      console.error("Failed to fetch recent files:", err)
+      console.error("[Debug Fetch] Full catch error:", err)
       setError("Failed to load recent files. Please try again.")
     } finally {
       setLoading(false)
@@ -91,11 +99,11 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     if (!confirm('Delete this file? This will also remove it from storage.')) return
 
     try {
-      const { data: file } = await supabase.from('recent_files').select('file_path').eq('id', id).single()
+      const { data: file } = await supabase.from('recent_mutcd_files').select('file_path').eq('id', id).single()  // Updated
       if (file?.file_path) {
-        await supabase.storage.from('recent_mutcd_pdfs').remove([file.file_path])
+        await supabase.storage.from('recent_mutcd_files').remove([file.file_path])  // Updated bucket
       }
-      await supabase.from('recent_files').delete().eq('id', id)
+      await supabase.from('recent_mutcd_files').delete().eq('id', id)  // Updated
     } catch (err) {
       console.error("Failed to delete file:", err)
     }
@@ -111,7 +119,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     if (!editingFile || !editedFileName.trim()) return
     try {
       await supabase
-        .from('recent_files')
+        .from('recent_mutcd_files')  // Updated
         .update({ file_name: editedFileName.trim() })
         .eq('id', editingFile.id)
       setEditingFile(null)
@@ -171,7 +179,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       })
       if (response.ok) {
         await supabase
-          .from('recent_files')
+          .from('recent_mutcd_files')  // Updated
           .update({ uploaded_to_bidx: true })
           .eq('id', file.id)
       } else {
@@ -321,19 +329,24 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
 // Uploads file to Supabase storage and creates/updates DB entry
 export async function uploadToSupabase(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
   try {
-    // Unique path
-    const filePath = `${Date.now()}-${file.name}`
+    console.log("[Upload Debug] Starting upload for:", file.name)
 
-    // Upload to storage
+    const filePath = `${Date.now()}-${file.name}`
+    console.log("[Upload Debug] File path:", filePath)
+
     const { error: uploadError } = await supabase.storage
-      .from('recent_mutcd_pdfs')
+      .from('recent_mutcd_files')  // Updated bucket
       .upload(filePath, file, { upsert: true })
 
-    if (uploadError) throw uploadError
+    if (uploadError) {
+      console.error("[Upload Debug] Storage error:", uploadError)
+      throw uploadError
+    }
+    console.log("[Upload Debug] Upload successful!")
 
     // Check if exists by file_name
     const { data: existing } = await supabase
-      .from('recent_files')
+      .from('recent_mutcd_files')  // Updated table
       .select('id')
       .eq('file_name', file.name)
       .single()
@@ -341,7 +354,7 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
     if (existing) {
       // Update
       await supabase
-        .from('recent_files')
+        .from('recent_mutcd_files')  // Updated
         .update({
           sign_count: signCount,
           processed_at: new Date().toISOString(),
@@ -351,7 +364,7 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
         .eq('id', existing.id)
     } else {
       // Insert
-      const { data, error } = await supabase.from('recent_files').insert({
+      const { data, error } = await supabase.from('recent_mutcd_files').insert({  // Updated
         file_name: file.name,
         sign_count: signCount,
         processed_at: new Date().toISOString(),
@@ -362,8 +375,9 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
       if (error) throw error
       return data.id  // Return ID for later updates
     }
+    console.log("[Upload Debug] DB insert/update successful!")
   } catch (error) {
-    console.error("Failed to upload to Supabase:", error)
+    console.error("[Upload Debug] Full error:", error)
   }
 }
 
@@ -372,7 +386,7 @@ export async function updateRecentFile(fileName: string, signCount: number) {
   try {
     const detectionStatus = signCount > 0 ? "successful" : "unsuccessful"
     await supabase
-      .from('recent_files')
+      .from('recent_mutcd_files')  // Updated
       .update({
         sign_count: signCount,
         processed_at: new Date().toISOString(),
