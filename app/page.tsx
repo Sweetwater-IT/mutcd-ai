@@ -1,11 +1,10 @@
 "use client"
-
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
 import type { PDFViewerProps } from "@/components/pdf-viewer"
 import dynamic from "next/dynamic"
 import { SignList } from "@/components/sign-list"
-import { RecentFiles, uploadToSupabase, updateRecentFile } from "@/components/recent-files"
+import { RecentFiles } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown, Crop } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import { Button } from "@/components/ui/button"
@@ -15,7 +14,7 @@ interface PDFWithSigns {
   file: File
   signs: DetectedSign[]
   selectedPage: number
-  supabaseId?: string  // Track Supabase record ID
+  supabaseId?: string // Track Supabase record ID (optional)
 }
 
 const PDFViewer = dynamic<PDFViewerProps>(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
@@ -36,16 +35,30 @@ export default function Home() {
 
   const handleFileUpload = async (files: File[]) => {
     const newPdfsPromises = files.map(async (file) => {
-      const supabaseId = await uploadToSupabase(file, 0, "not-started")
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error('Upload failed:', err.error)
+        return null // Skip on fail
+      }
+
+      const { id } = await response.json()
       return {
         file,
         signs: [],
         selectedPage: 1,
-        supabaseId,
+        supabaseId: id,
       }
     })
 
-    const newPdfs = await Promise.all(newPdfsPromises)
+    const newPdfs = (await Promise.all(newPdfsPromises)).filter(Boolean) // Filter out failed uploads
     setPdfFiles((prev) => [...prev, ...newPdfs])
     // Select the first newly uploaded file
     if (pdfFiles.length === 0) {
@@ -53,19 +66,30 @@ export default function Home() {
     }
   }
 
-  const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
+  const handleSignsDetected = async (detectedSigns: DetectedSign[]) => {
+    const currentPdf = pdfFiles[selectedPdfIndex]
+    const updatedSigns = [...currentPdf.signs, ...detectedSigns]
+
+    if (updatedSigns.length > 0) {
+      // Update via API route
+      const response = await fetch('/api/update-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: currentPdf.file.name,
+          signCount: updatedSigns.length,
+        }),
+      })
+
+      if (!response.ok) {
+        console.error('Update failed:', await response.json())
+      }
+    }
+
     setPdfFiles((prev) =>
-      prev.map((pdf, index) => {
-        if (index === selectedPdfIndex) {
-          const updatedSigns = [...pdf.signs, ...detectedSigns]
-          if (updatedSigns.length > 0) {
-            // Update Supabase with new sign count
-            updateRecentFile(pdf.file.name, updatedSigns.length)
-          }
-          return { ...pdf, signs: updatedSigns }
-        }
-        return pdf
-      }),
+      prev.map((pdf, index) =>
+        index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf
+      ),
     )
   }
 
