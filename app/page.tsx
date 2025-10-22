@@ -16,7 +16,7 @@ interface PDFWithSigns {
   selectedPage: number
 }
 
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer as any), {
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => (mod as any).PDFViewer), {
   ssr: false,
   loading: () => (
     <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
