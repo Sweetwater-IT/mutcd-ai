@@ -55,10 +55,11 @@ export default function Home() {
         signs: [],
         selectedPage: 1,
         supabaseId: id,
-      }
+      } as PDFWithSigns
     })
 
-    const newPdfs = (await Promise.all(newPdfsPromises)).filter(Boolean) // Filter out failed uploads
+    const newPdfsResults = await Promise.all(newPdfsPromises)
+    const newPdfs = newPdfsResults.filter((result): result is PDFWithSigns => result !== null) // Type guard to narrow to PDFWithSigns[]
     setPdfFiles((prev) => [...prev, ...newPdfs])
     // Select the first newly uploaded file
     if (pdfFiles.length === 0) {
