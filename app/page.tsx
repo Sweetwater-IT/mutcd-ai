@@ -9,12 +9,14 @@ import { FileText, Upload, ChevronDown } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
 interface PDFWithSigns {
   file: File
   signs: DetectedSign[]
   selectedPage: number
 }
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => ({ default: mod.PDFViewer })), {
+
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then(mod => mod.PDFViewer), {
   ssr: false,
   loading: () => (
     <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
@@ -25,9 +27,11 @@ const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => 
     </div>
   ),
 })
+
 export default function Home() {
   const [pdfFiles, setPdfFiles] = useState<PDFWithSigns[]>([])
   const [selectedPdfIndex, setSelectedPdfIndex] = useState<number>(0)
+
   const handleFileUpload = (files: File[]) => {
     const newPdfs = files.map((file) => ({
       file,
@@ -40,6 +44,7 @@ export default function Home() {
       setSelectedPdfIndex(0)
     }
   }
+
   const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => {
@@ -60,15 +65,19 @@ export default function Home() {
       }),
     )
   }
+
   const handleSignUpdate = (updatedSigns: DetectedSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf)),
     )
   }
+
   const handlePageChange = (page: number) => {
     setPdfFiles((prev) => prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, selectedPage: page } : pdf)))
   }
+
   const currentPdf = pdfFiles[selectedPdfIndex]
+
   const handleRecentFileSelect = async (fileData: string, fileName: string) => {
     try {
       // Convert base64 back to File object
@@ -80,10 +89,12 @@ export default function Home() {
       console.error("Failed to load recent file:", error)
     }
   }
+
   const handleDone = () => {
     setPdfFiles([])
     setSelectedPdfIndex(0)
   }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
