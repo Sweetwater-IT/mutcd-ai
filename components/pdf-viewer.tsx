@@ -13,7 +13,7 @@ const KonvaCropBox = dynamic(() => import("@/components/konva-crop-box").then((m
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
-interface PDFViewerProps {
+export interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: DetectedSign[]) => void
   selectedPage: number
@@ -79,7 +79,7 @@ function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFVie
   const handleCropComplete = async (area: { x: number; y: number; width: number; height: number }) => {
     setCropMode(false)
     setIsProcessing(true)
-    try {
+    try { 
       if (canvasRef.current) {
         const signs = await detectSigns(canvasRef.current, area)
         console.log("[v0] Detected signs:", signs)
@@ -154,7 +154,7 @@ function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFVie
             <Crop className="mr-2 h-4 w-4" />
             {isProcessing ? "Processing..." : cropMode ? "Drawing..." : "Draw Crop Box"}
           </Button>
-        </div>
+        </div> 
       </div>
       <div ref={containerRef} className="relative flex-1 overflow-auto bg-muted/10">
         <div className="flex h-full items-center justify-center p-8">
@@ -183,5 +183,4 @@ function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFVie
     </Card>
   )
 }
-
 export default PDFViewer;
