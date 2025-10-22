@@ -17,7 +17,7 @@ if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
 
-interface PDFViewerProps {
+export interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: DetectedSign[]) => void
   selectedPage: number
