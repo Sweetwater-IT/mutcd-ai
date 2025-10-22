@@ -1,12 +1,12 @@
 "use client"
-
 import type React from "react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Check, X } from "lucide-react"
 
+// Update interface to allow null for ref.current
 interface KonvaCropBoxProps {
-  canvasRef: React.RefObject<HTMLCanvasElement>
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
   onCropComplete: (area: { x: number; y: number; width: number; height: number }) => void
   onCancel: () => void
 }
@@ -23,24 +23,20 @@ export function KonvaCropBox({ canvasRef, onCropComplete, onCancel }: KonvaCropB
 
     import("konva").then((KonvaModule) => {
       setKonvaLoaded(true)
-
       if (isInitializedRef.current || !canvasRef.current || !stageContainerRef.current) return
 
       const Konva = KonvaModule.default
       const canvas = canvasRef.current
       const width = canvas.offsetWidth
       const height = canvas.offsetHeight
-
       console.log("[v0] Initializing Konva crop box:", { width, height })
 
       isInitializedRef.current = true
-
       const stage = new Konva.Stage({
         container: stageContainerRef.current,
         width: width,
         height: height,
       })
-
       const layer = new Konva.Layer()
       stage.add(layer)
 
@@ -122,20 +118,19 @@ export function KonvaCropBox({ canvasRef, onCropComplete, onCancel }: KonvaCropB
 
   const handleConfirm = () => {
     const canvas = canvasRef.current
-    if (!canvas) return
-
+    if (!canvas) {
+      console.warn("[v0] Canvas not available for crop confirmation")
+      return
+    }
     const scaleX = canvas.width / canvas.offsetWidth
     const scaleY = canvas.height / canvas.offsetHeight
-
     const area = {
       x: Math.round(cropRect.x * scaleX),
       y: Math.round(cropRect.y * scaleY),
       width: Math.round(cropRect.width * scaleX),
       height: Math.round(cropRect.height * scaleY),
     }
-
     console.log("[v0] Crop area confirmed:", area)
-
     if (area.width > 10 && area.height > 10) {
       onCropComplete(area)
     }
@@ -144,7 +139,6 @@ export function KonvaCropBox({ canvasRef, onCropComplete, onCancel }: KonvaCropB
   return (
     <>
       <div ref={stageContainerRef} className="absolute inset-0 z-10" style={{ cursor: "crosshair" }} />
-
       <div className="absolute right-4 top-4 z-20 flex gap-2">
         <Button size="sm" variant="default" onClick={handleConfirm} className="shadow-lg">
           <Check className="mr-2 h-4 w-4" />
