@@ -17,7 +17,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
-
 interface RecentFile {
   id: string
   file_name: string
@@ -25,13 +24,11 @@ interface RecentFile {
   processed_at: string
   uploaded_to_bidx?: boolean
   detection_status: "not-started" | "successful" | "unsuccessful"
-  file_url: string  // Computed public URL
+  file_url: string // Computed public URL
 }
-
 interface RecentFilesProps {
   onFileSelect: (fileUrl: string, fileName: string) => void
 }
-
 export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([])
   const [editingFile, setEditingFile] = useState<RecentFile | null>(null)
@@ -39,41 +36,34 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const [uploadingFileId, setUploadingFileId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
+  const [deletingFile, setDeletingFile] = useState<RecentFile | null>(null)
   useEffect(() => {
     fetchRecentFiles()
-
     const channel = supabase
-      .channel('recent_mutcd_files')  // Updated table name
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'recent_mutcd_files' }, () => {  // Updated
+      .channel('recent_mutcd_files') // Updated table name
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'recent_mutcd_files' }, () => { // Updated
         fetchRecentFiles()
       })
       .subscribe()
-
     return () => {
       supabase.removeChannel(channel)
     }
   }, [])
-
   const fetchRecentFiles = async () => {
     try {
       setLoading(true)
       setError(null)
       console.log("[Debug Fetch] Supabase client initialized, starting query...")
-
       const { data, error } = await supabase
-        .from('recent_mutcd_files')  // Updated table name
+        .from('recent_mutcd_files') // Updated table name
         .select('*')
         .order('processed_at', { ascending: false })
         .limit(12)
-
       console.log("[Debug Fetch] Raw response:", { data, error })
-
       if (error) {
         console.error("[Debug Fetch] Supabase error details:", error)
         throw error
       }
-
       const filesWithUrls: RecentFile[] = data?.map((file: any) => ({
         id: file.id,
         file_name: file.file_name,
@@ -81,9 +71,8 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
         processed_at: file.processed_at,
         uploaded_to_bidx: file.uploaded_to_bidx,
         detection_status: file.detection_status,
-        file_url: supabase.storage.from('recent_mutcd_files').getPublicUrl(file.file_path).data.publicUrl,  // Updated bucket
+        file_url: supabase.storage.from('recent_mutcd_files').getPublicUrl(file.file_path).data.publicUrl, // Updated bucket
       })) || []
-
       console.log("[Debug Fetch] Processed files:", filesWithUrls)
       setRecentFiles(filesWithUrls)
     } catch (err) {
@@ -93,33 +82,38 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       setLoading(false)
     }
   }
-
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirm('Delete this file? This will also remove it from storage.')) return
-
+  const handleDeleteConfirm = async () => {
+    if (!deletingFile) return
     try {
-      const { data: file } = await supabase.from('recent_mutcd_files').select('file_path').eq('id', id).single()  // Updated
+      const { data: file } = await supabase.from('recent_mutcd_files').select('file_path').eq('id', deletingFile.id).single() // Updated
       if (file?.file_path) {
-        await supabase.storage.from('recent_mutcd_files').remove([file.file_path])  // Updated bucket
+        await supabase.storage.from('recent_mutcd_files').remove([file.file_path]) // Updated bucket
       }
-      await supabase.from('recent_mutcd_files').delete().eq('id', id)  // Updated
+      await supabase.from('recent_mutcd_files').delete().eq('id', deletingFile.id) // Updated
     } catch (err) {
       console.error("Failed to delete file:", err)
+    } finally {
+      setDeletingFile(null)
     }
   }
-
+  const handleDelete = (file: RecentFile, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDeletingFile(file)
+  }
   const handleEdit = (file: RecentFile, e: React.MouseEvent) => {
+    e.stopPropagation()
+    onFileSelect(file.file_url, file.file_name)
+  }
+  const handleRename = (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingFile(file)
     setEditedFileName(file.file_name)
   }
-
   const handleSaveEdit = async () => {
     if (!editingFile || !editedFileName.trim()) return
     try {
       await supabase
-        .from('recent_mutcd_files')  // Updated
+        .from('recent_mutcd_files') // Updated
         .update({ file_name: editedFileName.trim() })
         .eq('id', editingFile.id)
       setEditingFile(null)
@@ -128,7 +122,6 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       console.error("Failed to save edit:", err)
     }
   }
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -142,7 +135,6 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`
     return date.toLocaleDateString()
   }
-
   const getDetectionBadge = (file: RecentFile) => {
     if (file.detection_status === "not-started") {
       return (
@@ -164,7 +156,6 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       </Badge>
     )
   }
-
   const handleUploadToBidX = async (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setUploadingFileId(file.id)
@@ -179,7 +170,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       })
       if (response.ok) {
         await supabase
-          .from('recent_mutcd_files')  // Updated
+          .from('recent_mutcd_files') // Updated
           .update({ uploaded_to_bidx: true })
           .eq('id', file.id)
       } else {
@@ -191,15 +182,12 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       setUploadingFileId(null)
     }
   }
-
   if (loading) {
     return <div className="text-center text-sm text-muted-foreground">Loading recent files...</div>
   }
-
   if (error) {
     return <div className="text-center text-sm text-destructive">{error}</div>
   }
-
   return (
     <div className="w-full max-w-5xl space-y-3">
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -270,9 +258,13 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => handleRename(file, e)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Rename
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={(e) => handleEdit(file, e)}>
                             <Pencil className="mr-2 h-4 w-4" />
-                            Edit
+                            Edit Signs
                           </DropdownMenuItem>
                           {file.detection_status === "successful" && !file.uploaded_to_bidx && (
                             <DropdownMenuItem
@@ -283,7 +275,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
                               {uploadingFileId === file.id ? "Uploading..." : "Upload to BidX"}
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={(e) => handleDelete(file.id, e)} className="text-destructive">
+                          <DropdownMenuItem onClick={(e) => handleDelete(file, e)} className="text-destructive">
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>
@@ -300,7 +292,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       <Dialog open={!!editingFile} onOpenChange={(open) => !open && setEditingFile(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit File Name</DialogTitle>
+            <DialogTitle>Rename File</DialogTitle>
             <DialogDescription>Update the name for this traffic plan file.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -322,39 +314,51 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={!!deletingFile} onOpenChange={(open) => !open && setDeletingFile(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{deletingFile?.file_name}"? This action cannot be undone and will also remove the file from storage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingFile(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
 // Uploads file to Supabase storage and creates/updates DB entry
 export async function uploadToSupabase(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
   try {
     console.log("[Upload Debug] Starting upload for:", file.name)
-
     const filePath = `${Date.now()}-${file.name}`
     console.log("[Upload Debug] File path:", filePath)
-
     const { error: uploadError } = await supabase.storage
-      .from('recent_mutcd_files')  // Updated bucket
+      .from('recent_mutcd_files') // Updated bucket
       .upload(filePath, file, { upsert: true })
-
     if (uploadError) {
       console.error("[Upload Debug] Storage error:", uploadError)
       throw uploadError
     }
     console.log("[Upload Debug] Upload successful!")
-
     // Check if exists by file_name
     const { data: existing } = await supabase
-      .from('recent_mutcd_files')  // Updated table
+      .from('recent_mutcd_files') // Updated table
       .select('id')
       .eq('file_name', file.name)
       .single()
-
     if (existing) {
       // Update
       await supabase
-        .from('recent_mutcd_files')  // Updated
+        .from('recent_mutcd_files') // Updated
         .update({
           sign_count: signCount,
           processed_at: new Date().toISOString(),
@@ -364,29 +368,27 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
         .eq('id', existing.id)
     } else {
       // Insert
-      const { data, error } = await supabase.from('recent_mutcd_files').insert({  // Updated
+      const { data, error } = await supabase.from('recent_mutcd_files').insert({ // Updated
         file_name: file.name,
         sign_count: signCount,
         processed_at: new Date().toISOString(),
         detection_status: detectionStatus,
         file_path: filePath,
       }).select().single()
-
       if (error) throw error
-      return data.id  // Return ID for later updates
+      return data.id // Return ID for later updates
     }
     console.log("[Upload Debug] DB insert/update successful!")
   } catch (error) {
     console.error("[Upload Debug] Full error:", error)
   }
 }
-
 // Updates existing file in DB with new sign count/status
 export async function updateRecentFile(fileName: string, signCount: number) {
   try {
     const detectionStatus = signCount > 0 ? "successful" : "unsuccessful"
     await supabase
-      .from('recent_mutcd_files')  // Updated
+      .from('recent_mutcd_files') // Updated
       .update({
         sign_count: signCount,
         processed_at: new Date().toISOString(),
