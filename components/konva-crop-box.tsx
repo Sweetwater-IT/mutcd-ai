@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useRef, useState, useImperativeHandle } from "react"  // Added useImperativeHandle here
+import React, { useEffect, useRef, useState, useImperativeHandle } from "react"
 import { Button } from "@/components/ui/button"
 import { Check, X } from "lucide-react"
 
@@ -70,6 +70,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       stage.on('mousedown', (e) => {
         if (rectRef.current) return  // Already drawing
         const pos = stage.getPointerPosition()
+        if (!pos) return;  // Add this null check to fix the error
         setStartX(pos.x)
         setStartY(pos.y)
         const rect = new Konva.Rect({
@@ -93,6 +94,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       stage.on('mousemove', () => {
         if (!isDrawing || !rectRef.current) return
         const pos = stage.getPointerPosition()
+        if (!pos) return;  // Add null check here too for consistency
         rectRef.current.width(Math.max(0, pos.x - startX))
         rectRef.current.height(Math.max(0, pos.y - startY))
         layer.draw()
