@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react" // Removed Crop icon as button is now Scan
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
 import dynamic from "next/dynamic"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
@@ -16,7 +16,7 @@ if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
 
-interface PDFViewerProps {
+export interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: DetectedSign[]) => void
   selectedPage: number
@@ -27,7 +27,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
-  const cropBoxRef = useRef<{ getCropArea: () => { x: number; y: number; width: number; height: number } | null }>(null)  // New ref for crop area
+  const cropBoxRef = useRef<{ getCropArea: () => { x: number; y: number; width: number; height: number } | null }>(null)
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [pdfDoc, setPdfDoc] = useState<any>(null)
@@ -173,27 +173,38 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
             >
               {isProcessing ? "Processing..." : "Start the Scan"}
             </Button>
-          ) : null}
-          {cropMode ? (
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCropMode(true)}
+              className="ml-2"
+              disabled={isProcessing}
+            >
+              <Crop className="mr-2 h-4 w-4" />
+              Draw Crop Box
+            </Button>
+          )}
+          {cropMode && (
             <Button variant="outline" size="sm" onClick={handleCancelCrop}>
               Cancel
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
       <div
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-muted/10"
-        onClick={() => !cropMode && setCropMode(true)}  // New: Click to start crop mode
+        onClick={cropMode ? undefined : () => setCropMode(true)}  // Start crop on click if not in mode
       >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
             <canvas ref={canvasRef} className="shadow-lg" />
             {cropMode && canvasRef.current && (
               <KonvaCropBox
-                ref={cropBoxRef}  // New ref
+                ref={cropBoxRef}
                 canvasRef={canvasRef}
-                onCropComplete={handleCropComplete}  // Keep, but now called from button
+                onCropComplete={handleCropComplete}
                 onCancel={handleCancelCrop}
               />
             )}
