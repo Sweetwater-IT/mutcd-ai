@@ -110,7 +110,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   if (isLoading) {
     return (
-      <Card className="flex h-[calc(100vh-12rem)] items-center justify-center">
+      <Card className="flex h-full items-center justify-center">  // Changed to h-full for layout fit
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Loading PDF...</p>
@@ -121,7 +121,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   if (error) {
     return (
-      <Card className="flex h-[calc(100vh-12rem)] items-center justify-center">
+      <Card className="flex h-full items-center justify-center">  // Changed to h-full for layout fit
         <div className="text-center">
           <p className="mb-4 text-sm text-destructive">{error}</p>
           <Button onClick={() => window.location.reload()}>Reload Page</Button>
@@ -131,7 +131,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   }
 
   return (
-    <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
+    <Card className="flex h-full flex-col overflow-hidden">  // Changed to h-full for layout fit
       {/* Toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -163,7 +163,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           <Button variant="outline" size="sm" onClick={handleZoomIn}>
             <ZoomIn className="h-4 w-4" />
           </Button>
-          {cropMode ? (
+          {cropMode && (
             <>
               <Button
                 variant="default"
@@ -178,13 +178,13 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
                 Cancel
               </Button>
             </>
-          ) : null}
+          )}
         </div>
       </div>
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-auto bg-muted/10 cursor-crosshair"  // Added cursor-crosshair for drawing hint
-        onClick={() => setCropMode(true)}  // Start crop mode on click
+        className="relative flex-1 overflow-auto bg-muted/10"
+        onClick={() => setCropMode(true)}  // Click to start crop mode
       >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
@@ -193,7 +193,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
               <KonvaCropBox
                 ref={cropBoxRef}
                 canvasRef={canvasRef}
-                onCropComplete={handleStartScan}  // Call scan on complete
+                onCropComplete={handleStartScan}
                 onCancel={handleCancelCrop}
               />
             )}
