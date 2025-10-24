@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useRef, useState } from "react"  // Change: Remove 'type' from import to allow value usage
+import React, { useEffect, useRef, useState, useImperativeHandle } from "react"  // Added useImperativeHandle here
 import { Button } from "@/components/ui/button"
 import { Check, X } from "lucide-react"
 
