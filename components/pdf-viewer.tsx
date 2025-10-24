@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"  // Added Crop
 import dynamic from "next/dynamic"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
