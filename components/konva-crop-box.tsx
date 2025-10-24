@@ -1,6 +1,5 @@
 "use client"
-import type React from "react"
-import { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"  // Change: Remove 'type' from import to allow value usage
 import { Button } from "@/components/ui/button"
 import { Check, X } from "lucide-react"
 
