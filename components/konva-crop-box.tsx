@@ -4,151 +4,130 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Check, X } from "lucide-react"
 
-// Update interface to allow null for ref.current
 interface KonvaCropBoxProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   onCropComplete: (area: { x: number; y: number; width: number; height: number }) => void
   onCancel: () => void
 }
 
-export function KonvaCropBox({ canvasRef, onCropComplete, onCancel }: KonvaCropBoxProps) {
+const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: number; width: number; height: number } | null }, KonvaCropBoxProps>(({ canvasRef, onCropComplete, onCancel }, ref) => {
   const stageContainerRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<any>(null)
-  const isInitializedRef = useRef(false)
-  const [cropRect, setCropRect] = useState({ x: 100, y: 100, width: 200, height: 200 })
+  const rectRef = useRef<any>(null)
+  const trRef = useRef<any>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [startX, setStartX] = useState(0)
+  const [startY, setStartY] = useState(0)
   const [konvaLoaded, setKonvaLoaded] = useState(false)
+
+  useImperativeHandle(ref, () => ({
+    getCropArea: () => {
+      if (rectRef.current) {
+        return {
+          x: rectRef.current.x(),
+          y: rectRef.current.y(),
+          width: rectRef.current.width(),
+          height: rectRef.current.height(),
+        }
+      }
+      return null
+    },
+  }))
 
   useEffect(() => {
     if (typeof window === "undefined") return
-
     import("konva").then((KonvaModule) => {
       setKonvaLoaded(true)
-      if (isInitializedRef.current || !canvasRef.current || !stageContainerRef.current) return
-
       const Konva = KonvaModule.default
       const canvas = canvasRef.current
+      if (!canvas || !stageContainerRef.current) return
       const width = canvas.offsetWidth
       const height = canvas.offsetHeight
-      console.log("[v0] Initializing Konva crop box:", { width, height })
-
-      isInitializedRef.current = true
       const stage = new Konva.Stage({
         container: stageContainerRef.current,
-        width: width,
-        height: height,
+        width,
+        height,
       })
       const layer = new Konva.Layer()
       stage.add(layer)
-
-      const overlay = new Konva.Rect({
-        x: 0,
-        y: 0,
-        width: width,
-        height: height,
-        fill: "rgba(0, 0, 0, 0.5)",
-        listening: false,
-      })
-      layer.add(overlay)
-
-      const rect = new Konva.Rect({
-        x: Math.min(100, width - 250),
-        y: Math.min(100, height - 250),
-        width: 200,
-        height: 200,
-        fill: "rgba(59, 130, 246, 0.2)",
-        stroke: "#3b82f6",
-        strokeWidth: 3,
-        draggable: true,
-        shadowColor: "#3b82f6",
-        shadowBlur: 10,
-        shadowOpacity: 0.6,
-      })
-
       const transformer = new Konva.Transformer({
-        nodes: [rect],
         keepRatio: false,
-        enabledAnchors: ["top-left", "top-right", "bottom-left", "bottom-right"],
+        enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
         rotateEnabled: false,
-        borderStroke: "#3b82f6",
+        borderStroke: '#3b82f6',
         borderStrokeWidth: 2,
-        anchorFill: "#3b82f6",
-        anchorStroke: "#ffffff",
+        anchorFill: '#3b82f6',
+        anchorStroke: '#ffffff',
         anchorSize: 12,
         anchorCornerRadius: 6,
         boundBoxFunc: (oldBox, newBox) => {
-          if (newBox.width < 50 || newBox.height < 50) {
-            return oldBox
-          }
-          if (newBox.x < 0 || newBox.y < 0 || newBox.x + newBox.width > width || newBox.y + newBox.height > height) {
-            return oldBox
-          }
+          if (newBox.width < 50 || newBox.height < 50) return oldBox
+          if (newBox.x < 0 || newBox.y < 0 || newBox.x + newBox.width > width || newBox.y + newBox.height > height) return oldBox
           return newBox
         },
       })
-
-      layer.add(rect)
       layer.add(transformer)
-
-      rect.on("dragend transformend", () => {
-        const newRect = {
-          x: rect.x(),
-          y: rect.y(),
-          width: rect.width() * rect.scaleX(),
-          height: rect.height() * rect.scaleY(),
-        }
-        setCropRect(newRect)
-        rect.scaleX(1)
-        rect.scaleY(1)
-        console.log("[v0] Crop rect updated:", newRect)
+      trRef.current = transformer
+      stage.on('mousedown', (e) => {
+        if (rectRef.current) return  // Already drawing
+        const pos = stage.getPointerPosition()
+        setStartX(pos.x)
+        setStartY(pos.y)
+        const rect = new Konva.Rect({
+          x: pos.x,
+          y: pos.y,
+          width: 0,
+          height: 0,
+          fill: 'rgba(59, 130, 246, 0.2)',
+          stroke: '#3b82f6',
+          strokeWidth: 3,
+          draggable: true,
+          shadowColor: '#3b82f6',
+          shadowBlur: 10,
+          shadowOpacity: 0.6,
+        })
+        layer.add(rect)
+        rectRef.current = rect
+        setIsDrawing(true)
+        layer.draw()
       })
-
-      layer.draw()
+      stage.on('mousemove', () => {
+        if (!isDrawing || !rectRef.current) return
+        const pos = stage.getPointerPosition()
+        rectRef.current.width(Math.max(0, pos.x - startX))
+        rectRef.current.height(Math.max(0, pos.y - startY))
+        layer.draw()
+      })
+      stage.on('mouseup', () => {
+        if (!isDrawing) return
+        setIsDrawing(false)
+        if (rectRef.current.width() < 50 || rectRef.current.height() < 50) {
+          rectRef.current.destroy()
+          rectRef.current = null
+        } else {
+          trRef.current.nodes([rectRef.current])
+        }
+        layer.draw()
+      })
+      rectRef.current?.on('transformend dragend', () => {
+        layer.draw()
+      })
       stageRef.current = stage
     })
-
     return () => {
-      console.log("[v0] Cleaning up Konva stage")
       if (stageRef.current) {
         stageRef.current.destroy()
-        stageRef.current = null
       }
-      isInitializedRef.current = false
     }
   }, [canvasRef])
 
-  const handleConfirm = () => {
-    const canvas = canvasRef.current
-    if (!canvas) {
-      console.warn("[v0] Canvas not available for crop confirmation")
-      return
-    }
-    const scaleX = canvas.width / canvas.offsetWidth
-    const scaleY = canvas.height / canvas.offsetHeight
-    const area = {
-      x: Math.round(cropRect.x * scaleX),
-      y: Math.round(cropRect.y * scaleY),
-      width: Math.round(cropRect.width * scaleX),
-      height: Math.round(cropRect.height * scaleY),
-    }
-    console.log("[v0] Crop area confirmed:", area)
-    if (area.width > 10 && area.height > 10) {
-      onCropComplete(area)
-    }
-  }
-
   return (
     <>
-      <div ref={stageContainerRef} className="absolute inset-0 z-10" style={{ cursor: "crosshair" }} />
-      <div className="absolute right-4 top-4 z-20 flex gap-2">
-        <Button size="sm" variant="default" onClick={handleConfirm} className="shadow-lg">
-          <Check className="mr-2 h-4 w-4" />
-          Detect Signs
-        </Button>
-        <Button size="sm" variant="outline" onClick={onCancel} className="bg-background shadow-lg">
-          <X className="mr-2 h-4 w-4" />
-          Cancel
-        </Button>
-      </div>
+      <div ref={stageContainerRef} className="absolute inset-0 z-10" style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} />
     </>
   )
-}
+})
+
+KonvaCropBox.displayName = "KonvaCropBox"
+
+export { KonvaCropBox }
