@@ -150,7 +150,7 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 flex-1">  // Changed: flex-1 to fill remaining space
+      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex">  // Added height constraint and flex
         {pdfFiles.length === 0 ? (
           <div className="space-y-8">
             <div className="flex justify-center pt-8">
