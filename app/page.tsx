@@ -1,11 +1,11 @@
 "use client"
+
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
-import type { PDFViewerProps } from "@/components/pdf-viewer"
 import dynamic from "next/dynamic"
 import { SignList } from "@/components/sign-list"
-import { RecentFiles } from "@/components/recent-files"
-import { FileText, Upload, ChevronDown, Crop } from "lucide-react"
+import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
+import { FileText, Upload, ChevronDown } from "lucide-react"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -14,13 +14,12 @@ interface PDFWithSigns {
   file: File
   signs: DetectedSign[]
   selectedPage: number
-  supabaseId?: string // Track Supabase record ID (optional)
 }
 
-const PDFViewer = dynamic<PDFViewerProps>(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => (mod as any).PDFViewer), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
+    <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card">  // Changed to h-full
       <div className="text-center">
         <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         <p className="text-sm text-muted-foreground">Loading PDF viewer...</p>
@@ -33,33 +32,12 @@ export default function Home() {
   const [pdfFiles, setPdfFiles] = useState<PDFWithSigns[]>([])
   const [selectedPdfIndex, setSelectedPdfIndex] = useState<number>(0)
 
-  const handleFileUpload = async (files: File[]) => {
-    const newPdfsPromises = files.map(async (file) => {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error('Upload failed:', err.error)
-        return null // Skip on fail
-      }
-
-      const { id } = await response.json()
-      return {
-        file,
-        signs: [],
-        selectedPage: 1,
-        supabaseId: id,
-      } as PDFWithSigns
-    })
-
-    const newPdfsResults = await Promise.all(newPdfsPromises)
-    const newPdfs = newPdfsResults.filter((result): result is PDFWithSigns => result !== null) // Type guard to narrow to PDFWithSigns[]
+  const handleFileUpload = (files: File[]) => {
+    const newPdfs = files.map((file) => ({
+      file,
+      signs: [],
+      selectedPage: 1,
+    }))
     setPdfFiles((prev) => [...prev, ...newPdfs])
     // Select the first newly uploaded file
     if (pdfFiles.length === 0) {
@@ -67,30 +45,24 @@ export default function Home() {
     }
   }
 
-  const handleSignsDetected = async (detectedSigns: DetectedSign[]) => {
-    const currentPdf = pdfFiles[selectedPdfIndex]
-    const updatedSigns = [...currentPdf.signs, ...detectedSigns]
-
-    if (updatedSigns.length > 0) {
-      // Update via API route
-      const response = await fetch('/api/update-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: currentPdf.file.name,
-          signCount: updatedSigns.length,
-        }),
-      })
-
-      if (!response.ok) {
-        console.error('Update failed:', await response.json())
-      }
-    }
-
+  const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
     setPdfFiles((prev) =>
-      prev.map((pdf, index) =>
-        index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf
-      ),
+      prev.map((pdf, index) => {
+        if (index === selectedPdfIndex) {
+          const updatedSigns = [...pdf.signs, ...detectedSigns]
+          if (updatedSigns.length > 0) {
+            // Convert file to base64 for storage
+            const reader = new FileReader()
+            reader.onload = () => {
+              const base64 = reader.result as string
+              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64)
+            }
+            reader.readAsDataURL(pdf.file)
+          }
+          return { ...pdf, signs: updatedSigns }
+        }
+        return pdf
+      }),
     )
   }
 
@@ -106,12 +78,13 @@ export default function Home() {
 
   const currentPdf = pdfFiles[selectedPdfIndex]
 
-  const handleRecentFileSelect = async (fileUrl: string, fileName: string) => {
+  const handleRecentFileSelect = async (fileData: string, fileName: string) => {
     try {
-      const response = await fetch(fileUrl)
+      // Convert base64 back to File object
+      const response = await fetch(fileData)
       const blob = await response.blob()
       const file = new File([blob], fileName, { type: "application/pdf" })
-      await handleFileUpload([file])
+      handleFileUpload([file])
     } catch (error) {
       console.error("Failed to load recent file:", error)
     }
@@ -123,9 +96,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">  // Added flex flex-col for full height
       {/* Header */}
-      <header className="border-b border-border bg-card">
+      <header className="border-b border-border bg-card shrink-0">  // Added shrink-0 to fix header height
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -137,12 +110,7 @@ export default function Home() {
                 <p className="text-sm text-muted-foreground">Traffic Plan Analysis Tool</p>
               </div>
             </div>
-            {pdfFiles.length === 0 ? (
-              <Button variant="default" onClick={() => document.getElementById("pdf-upload")?.click()}>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload PDF
-              </Button>
-            ) : (
+            {pdfFiles.length > 0 && (
               <div className="flex items-center gap-4">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -182,65 +150,18 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 flex-1">  // Changed: flex-1 to fill remaining space
         {pdfFiles.length === 0 ? (
-          <div className="mx-auto max-w-5xl space-y-8">
-            {/* Instructions Section */}
-            <div className="rounded-lg border border-border bg-card p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">Getting Started</h2>
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    1
-                  </div>
-                  <p>
-                    <span className="font-medium text-foreground">Upload your traffic plan PDF</span> - Click the
-                    "Upload PDF" button in the top right. Multiple files are supported.
-                  </p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    2
-                  </div>
-                  <p>
-                    <span className="font-medium text-foreground">Draw a crop box</span> - Click "Draw Crop Box" and
-                    drag to select the area containing MUTCD signs.
-                  </p>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    3
-                  </div>
-                  <p>
-                    <span className="font-medium text-foreground">Review and edit</span> - Check the detected signs in
-                    the sidebar, edit any details, and upload to BidX when ready.
-                  </p>
-                </div>
-              </div>
+          <div className="space-y-8">
+            <div className="flex justify-center pt-8">
+              <PDFUploader onFileUpload={handleFileUpload} />
             </div>
-            {/* Recent Files */}
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full">  // Changed: h-full to fill main
             {/* PDF Viewer with Crop Box */}
-            <div className="space-y-4">
-              {/* Instructions Banner Above PDF Viewer */}
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-full bg-primary/10 p-2">
-                    <Crop className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <h3 className="text-sm font-semibold text-foreground">How to detect signs</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Click <span className="font-medium text-foreground">"Draw Crop Box"</span> above, then drag to
-                      highlight the area containing traffic signs. The system will automatically analyze and detect
-                      MUTCD signs. Review results in the sidebar and edit as needed.
-                    </p>
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-4 flex-1">  // Changed: flex-1 to fill grid cell
               <PDFViewer
                 file={currentPdf.file}
                 onSignsDetected={handleSignsDetected}
@@ -261,10 +182,10 @@ export default function Home() {
         accept="application/pdf"
         multiple
         className="hidden"
-        onChange={async (e) => {
+        onChange={(e) => {
           const files = Array.from(e.target.files || [])
           if (files.length > 0) {
-            await handleFileUpload(files)
+            handleFileUpload(files)
           }
           e.target.value = "" // Reset input
         }}
