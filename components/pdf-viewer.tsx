@@ -1,9 +1,8 @@
 "use client"
-
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react" // Removed Crop icon as button is now Scan
 import dynamic from "next/dynamic"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
@@ -17,7 +16,7 @@ if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
 
-export interface PDFViewerProps {
+interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: DetectedSign[]) => void
   selectedPage: number
@@ -28,6 +27,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
+  const cropBoxRef = useRef<{ getCropArea: () => { x: number; y: number; width: number; height: number } | null }>(null)  // New ref for crop area
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [pdfDoc, setPdfDoc] = useState<any>(null)
@@ -42,11 +42,9 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         setIsLoading(true)
         setError(null)
         console.log("[v0] Loading PDF:", file.name)
-
         const fileUrl = URL.createObjectURL(file)
         const loadingTask = pdfjsLib.getDocument(fileUrl)
         const pdf = await loadingTask.promise
-
         console.log("[v0] PDF loaded successfully, pages:", pdf.numPages)
         setPdfDoc(pdf)
         setNumPages(pdf.numPages)
@@ -57,58 +55,57 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         setIsLoading(false)
       }
     }
-
     loadPDF()
   }, [file])
 
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current || !containerRef.current) return
-
     const renderPage = async () => {
       try {
         const page = await pdfDoc.getPage(selectedPage)
         const canvas = canvasRef.current!
         const context = canvas.getContext("2d")!
-
-        const baseScale = 1.2
+        const baseScale = 2.0 // Larger base scale for better visibility
         const viewport = page.getViewport({ scale: baseScale * zoom })
-
         canvas.height = viewport.height
         canvas.width = viewport.width
-
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
         }
-
         await page.render(renderContext).promise
         console.log("[v0] Page rendered:", selectedPage)
       } catch (err) {
         console.error("[v0] Error rendering page:", err)
       }
     }
-
     renderPage()
   }, [pdfDoc, selectedPage, zoom])
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
 
-  const handleCropComplete = async (area: { x: number; y: number; width: number; height: number }) => {
-    setCropMode(false)
-    setIsProcessing(true)
-
-    try {
-      if (canvasRef.current) {
-        const signs = await detectSigns(canvasRef.current, area)
-        console.log("[v0] Detected signs:", signs)
-        onSignsDetected(signs)
+  const handleStartScan = async () => {
+    const area = cropBoxRef.current?.getCropArea()
+    if (area && area.width > 10 && area.height > 10) {
+      setCropMode(false)
+      setIsProcessing(true)
+      try {
+        if (canvasRef.current) {
+          const signs = await detectSigns(canvasRef.current, area)
+          console.log("[v0] Detected signs:", signs)
+          onSignsDetected(signs)
+        }
+      } catch (error) {
+        console.error("[v0] Error detecting signs:", error)
+      } finally {
+        setIsProcessing(false)
       }
-    } catch (error) {
-      console.error("[v0] Error detecting signs:", error)
-    } finally {
-      setIsProcessing(false)
     }
+  }
+
+  const handleCancelCrop = () => {
+    setCropMode(false)
   }
 
   if (isLoading) {
@@ -158,7 +155,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleZoomOut}>
             <ZoomOut className="h-4 w-4" />
@@ -167,28 +163,38 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           <Button variant="outline" size="sm" onClick={handleZoomIn}>
             <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button
-            variant={cropMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setCropMode(!cropMode)}
-            className="ml-2"
-            disabled={isProcessing}
-          >
-            <Crop className="mr-2 h-4 w-4" />
-            {isProcessing ? "Processing..." : cropMode ? "Drawing..." : "Draw Crop Box"}
-          </Button>
+          {cropMode ? (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleStartScan}
+              className="ml-2"
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Processing..." : "Start the Scan"}
+            </Button>
+          ) : null}
+          {cropMode ? (
+            <Button variant="outline" size="sm" onClick={handleCancelCrop}>
+              Cancel
+            </Button>
+          ) : null}
         </div>
       </div>
-
-      <div ref={containerRef} className="relative flex-1 overflow-auto bg-muted/10">
+      <div
+        ref={containerRef}
+        className="relative flex-1 overflow-auto bg-muted/10"
+        onClick={() => !cropMode && setCropMode(true)}  // New: Click to start crop mode
+      >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
             <canvas ref={canvasRef} className="shadow-lg" />
             {cropMode && canvasRef.current && (
               <KonvaCropBox
+                ref={cropBoxRef}  // New ref
                 canvasRef={canvasRef}
-                onCropComplete={handleCropComplete}
-                onCancel={() => setCropMode(false)}
+                onCropComplete={handleCropComplete}  // Keep, but now called from button
+                onCancel={handleCancelCrop}
               />
             )}
           </div>
