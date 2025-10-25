@@ -149,8 +149,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     setResizeHandle(null)
   }
 
-  // Resize handles (top-left example)
-  const handleMouseDownHandle = (handle: 'top-left') => (e: React.MouseEvent) => {
+  // Resize handles
+  const handleMouseDownHandle = (handle: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (e: React.MouseEvent) => {
     e.stopPropagation()
     setResizeHandle(handle)
     setStartPos({ x: e.clientX, y: e.clientY })
