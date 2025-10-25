@@ -1,7 +1,7 @@
 "use client"
 export const dynamic = 'force-dynamic';
 import { useState } from "react"
-import dynamic from "next/dynamic"
+import { dynamic as dynamicImport } from "next/dynamic"
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown } from "lucide-react"
@@ -15,7 +15,7 @@ interface PDFWithSigns {
   selectedPage: number
 }
 
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => ({ default: mod.PDFViewer })), {
+const PDFViewer = dynamicImport(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
   ssr: false,
   loading: () => (
     <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
