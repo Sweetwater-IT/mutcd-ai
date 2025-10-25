@@ -35,17 +35,30 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
 
   useEffect(() => {
     if (typeof window === "undefined") return
+    console.log('KonvaCropBox mounted, canvas:', canvasRef.current)  // Debug: Confirm mount
     import("konva").then((KonvaModule) => {
       setKonvaLoaded(true)
       const Konva = KonvaModule.default
       const canvas = canvasRef.current
-      if (!canvas || !stageContainerRef.current) return
-      const width = canvas.offsetWidth
-      const height = canvas.offsetHeight
+      if (!canvas || !stageContainerRef.current) {
+        console.warn('No canvas or container for Konva')  // Debug
+        return
+      }
+      const updateStageSize = () => {
+        const width = canvas.offsetWidth
+        const height = canvas.offsetHeight
+        if (stageRef.current) {
+          stageRef.current.width(width)
+          stageRef.current.height(height)
+          console.log('Stage resized to', width, 'x', height)  // Debug
+        }
+      }
+      updateStageSize()  // Initial size
+
       const stage = new Konva.Stage({
         container: stageContainerRef.current,
-        width,
-        height,
+        width: canvas.offsetWidth,
+        height: canvas.offsetHeight,
       })
       const layer = new Konva.Layer()
       stage.add(layer)
@@ -60,6 +73,8 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         anchorSize: 12,
         anchorCornerRadius: 6,
         boundBoxFunc: (oldBox, newBox) => {
+          const width = canvas.offsetWidth
+          const height = canvas.offsetHeight
           if (newBox.width < 50 || newBox.height < 50) return oldBox
           if (newBox.x < 0 || newBox.y < 0 || newBox.x + newBox.width > width || newBox.y + newBox.height > height) return oldBox
           return newBox
@@ -67,10 +82,14 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       })
       layer.add(transformer)
       trRef.current = transformer
+
+      // Events
       stage.on('mousedown', (e) => {
+        console.log('Stage mousedown event')  // Debug
         if (rectRef.current) return  // Already drawing
         const pos = stage.getPointerPosition()
-        if (!pos) return;  // Add this null check to fix the error
+        console.log('Mousedown pos:', pos)  // Debug
+        if (!pos) return
         setStartX(pos.x)
         setStartY(pos.y)
         const rect = new Konva.Rect({
@@ -94,7 +113,8 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       stage.on('mousemove', () => {
         if (!isDrawing || !rectRef.current) return
         const pos = stage.getPointerPosition()
-        if (!pos) return;  // Add null check here too for consistency
+        console.log('Mousemove pos:', pos)  // Debug
+        if (!pos) return
         rectRef.current.width(Math.max(0, pos.x - startX))
         rectRef.current.height(Math.max(0, pos.y - startY))
         layer.draw()
@@ -113,22 +133,58 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       rectRef.current?.on('transformend dragend', () => {
         layer.draw()
       })
+
+      // Resize listener for zoom/page changes
+      window.addEventListener('resize', updateStageSize)
+      const resizeObserver = new ResizeObserver(updateStageSize)
+      resizeObserver.observe(canvas)
       stageRef.current = stage
     })
     return () => {
       if (stageRef.current) {
         stageRef.current.destroy()
       }
+      window.removeEventListener('resize', () => {})  // Cleanup
     }
   }, [canvasRef])
 
+  const handleConfirm = () => {
+    const area = ref.current?.getCropArea()
+    if (area) {
+      onCropComplete(area)
+    }
+  }
+
+  const handleCancel = () => {
+    if (rectRef.current) {
+      rectRef.current.destroy()
+      rectRef.current = null
+    }
+    onCancel()
+  }
+
   return (
     <>
-      <div ref={stageContainerRef} className="absolute inset-0 z-10" style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} />
+      <div 
+        ref={stageContainerRef} 
+        className="absolute inset-0 z-10 pointer-events-auto" 
+        style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} 
+      />
+      {rectRef.current && (
+        <div className="pointer-events-auto absolute right-4 top-4 flex gap-2 z-20">
+          <Button size="sm" variant="default" onClick={handleConfirm} className="shadow-lg">
+            <Check className="mr-2 h-4 w-4" />
+            Detect Signs
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleCancel} className="shadow-lg">
+            <X className="mr-2 h-4 w-4" />
+            Cancel
+          </Button>
+        </div>
+      )}
     </>
   )
 })
 
 KonvaCropBox.displayName = "KonvaCropBox"
-
 export { KonvaCropBox }
