@@ -1,5 +1,5 @@
 "use client"
-export const forceDynamic = "force-dynamic"
+export const dynamic = 'force-dynamic';
 import { useState } from "react"
 import dynamic from "next/dynamic"
 import { SignList } from "@/components/sign-list"
