@@ -16,7 +16,7 @@ interface PDFWithSigns {
   selectedPage: number
 }
 
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => (mod as any).PDFViewer), {
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
   ssr: false,
   loading: () => (
     <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card">  // Changed to h-full
