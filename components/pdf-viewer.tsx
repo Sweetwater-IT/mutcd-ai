@@ -2,15 +2,10 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"  // Added Crop icon
-import dynamic from "next/dynamic"
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import * as pdfjsLib from "pdfjs-dist"
-
-const KonvaCropBox = dynamic(() => import("@/components/konva-crop-box").then((mod) => mod.KonvaCropBox), {
-  ssr: false,
-})
 
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
@@ -27,7 +22,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
-  const cropBoxRef = useRef<{ getCropArea: () => { x: number; y: number; width: number; height: number } | null }>(null)
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [pdfDoc, setPdfDoc] = useState<any>(null)
@@ -35,6 +29,11 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Simple crop state (no Konva)
+  const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 })
+  const cropOverlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -85,53 +84,94 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
 
-  const handleEnterCropMode = () => setCropMode(true)  // New: Button to enter mode
+  const handleEnterCropMode = () => {
+    setCropMode(true)
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+    setIsDrawing(false)
+  }
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!cropMode) return
+    e.preventDefault()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    setStartPos({ x, y })
+    setIsDrawing(true)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !cropMode) return
+    e.preventDefault()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const newWidth = Math.abs(x - startPos.x)
+    const newHeight = Math.abs(y - startPos.y)
+    setCropArea({
+      x: Math.min(startPos.x, x),
+      y: Math.min(startPos.y, y),
+      width: newWidth,
+      height: newHeight,
+    })
+  }
+
+  const handleMouseUp = () => {
+    if (isDrawing) {
+      setIsDrawing(false)
+      if (cropArea.width < 50 || cropArea.height < 50) {
+        setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+      }
+    }
+  }
 
   const handleStartScan = async () => {
-    const area = cropBoxRef.current?.getCropArea()
-    if (area && area.width > 10 && area.height > 10) {
-      setCropMode(false)
-      setIsProcessing(true)
-      try {
-        if (canvasRef.current) {
-          const signs = await detectSigns(canvasRef.current, area)
-          console.log("[v0] Detected signs:", signs)
-          onSignsDetected(signs)
+    if (cropArea.width < 10 || cropArea.height < 10) return
+    setCropMode(false)
+    setIsProcessing(true)
+    try {
+      if (canvasRef.current) {
+        const area = cropArea
+        const signs = await detectSigns(canvasRef.current, area)
+        console.log("[v0] Detected signs:", signs)
+        onSignsDetected(signs)
 
-          // Crop & export as PNG
-          const canvas = canvasRef.current
-          const tempCanvas = document.createElement('canvas')
-          tempCanvas.width = area.width
-          tempCanvas.height = area.height
-          const tempCtx = tempCanvas.getContext('2d')
-          if (tempCtx) {
-            tempCtx.drawImage(
-              canvas, 
-              area.x, area.y, area.width, area.height, 
-              0, 0, area.width, area.height
-            )
-            tempCanvas.toBlob((blob) => {
-              if (blob) {
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `crop-${Date.now()}.png`
-                a.click()
-                URL.revokeObjectURL(url)
-              }
-            }, 'image/png')
-          }
+        // Crop & export as PNG
+        const canvas = canvasRef.current
+        const tempCanvas = document.createElement('canvas')
+        tempCanvas.width = area.width
+        tempCanvas.height = area.height
+        const tempCtx = tempCanvas.getContext('2d')
+        if (tempCtx) {
+          tempCtx.drawImage(
+            canvas, 
+            area.x, area.y, area.width, area.height, 
+            0, 0, area.width, area.height
+          )
+          tempCanvas.toBlob((blob) => {
+            if (blob) {
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `crop-${Date.now()}.png`
+              a.click()
+              URL.revokeObjectURL(url)
+            }
+          }, 'image/png')
         }
-      } catch (error) {
-        console.error("[v0] Error detecting signs:", error)
-      } finally {
-        setIsProcessing(false)
       }
+    } catch (error) {
+      console.error("[v0] Error detecting signs:", error)
+    } finally {
+      setIsProcessing(false)
+      setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     }
   }
 
   const handleCancelCrop = () => {
     setCropMode(false)
+    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
+    setIsDrawing(false)
   }
 
   if (isLoading) {
@@ -155,6 +195,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
+
+  const showCropBox = cropMode && cropArea.width > 0 && cropArea.height > 0
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
@@ -192,7 +234,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           <Button
             variant="outline"
             size="sm"
-            onClick={handleEnterCropMode}  // New: Button to enter crop mode
+            onClick={handleEnterCropMode}
             disabled={cropMode}
           >
             <Crop className="mr-1 h-4 w-4" />
@@ -219,21 +261,52 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       <div
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-muted/10"
-        // Removed onClick - button now triggers mode
       >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
             <canvas 
               ref={canvasRef} 
-              className={`shadow-lg ${cropMode ? 'pointer-events-none' : ''}`}  // Disable events during mode
+              className={`shadow-lg ${cropMode ? 'pointer-events-none' : ''}`}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              style={{ cursor: cropMode ? 'crosshair' : 'default' }}
             />
-            {cropMode && canvasRef.current && (
-              <KonvaCropBox
-                ref={cropBoxRef}
-                canvasRef={canvasRef}
-                onCropComplete={handleStartScan}
-                onCancel={handleCancelCrop}
-              />
+            {/* Simple Crop Overlay */}
+            {cropMode && (
+              <>
+                {/* Dim overlay outside crop */}
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: showCropBox
+                      ? `
+                        linear-gradient(to right, rgba(0,0,0,0.3) ${cropArea.x}px, transparent ${cropArea.x}px, transparent ${cropArea.x + cropArea.width}px, rgba(0,0,0,0.3) ${cropArea.x + cropArea.width}px),
+                        linear-gradient(to bottom, rgba(0,0,0,0.3) ${cropArea.y}px, transparent ${cropArea.y}px, transparent ${cropArea.y + cropArea.height}px, rgba(0,0,0,0.3) ${cropArea.y + cropArea.height}px)
+                      `
+                      : "rgba(0,0,0,0.1)",
+                  }}
+                />
+                {/* Blue Crop Box */}
+                {showCropBox && (
+                  <div
+                    className="absolute border-2 border-blue-500 shadow-lg pointer-events-none"
+                    style={{
+                      left: `${cropArea.x}px`,
+                      top: `${cropArea.y}px`,
+                      width: `${cropArea.width}px`,
+                      height: `${cropArea.height}px`,
+                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    }}
+                  >
+                    {/* Resize Handles */}
+                    <div className="absolute -right-1 -top-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
+                    <div className="absolute -bottom-1 -right-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
+                    <div className="absolute -bottom-1 -left-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
+                    <div className="absolute -left-1 -top-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
