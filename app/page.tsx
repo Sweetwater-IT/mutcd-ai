@@ -54,7 +54,7 @@ export default function Home() {
             const reader = new FileReader()
             reader.onload = () => {
               const base64 = reader.result as string
-              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64, false)
+               saveToRecentFiles(pdf.file.name, updatedSigns.length, base64, "successful")           
             }
             reader.readAsDataURL(pdf.file)
           }
