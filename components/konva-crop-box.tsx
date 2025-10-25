@@ -1,7 +1,5 @@
 "use client"
 import React, { useEffect, useRef, useState, useImperativeHandle } from "react"
-import { Button } from "@/components/ui/button"
-import { Check, X } from "lucide-react"
 
 interface KonvaCropBoxProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -35,7 +33,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    console.log('KonvaCropBox mounted, canvas:', canvasRef.current)  // Debug: Confirm mount
+    console.log('KonvaCropBox mounted, canvas:', canvasRef.current)  // Debug
     import("konva").then((KonvaModule) => {
       setKonvaLoaded(true)
       const Konva = KonvaModule.default
@@ -53,7 +51,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
           console.log('Stage resized to', width, 'x', height)  // Debug
         }
       }
-      updateStageSize()  // Initial size
+      updateStageSize()
 
       const stage = new Konva.Stage({
         container: stageContainerRef.current,
@@ -83,10 +81,10 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       layer.add(transformer)
       trRef.current = transformer
 
-      // Events
-      stage.on('mousedown', (e) => {
-        console.log('Stage mousedown event')  // Debug
-        if (rectRef.current) return  // Already drawing
+      // Fixed Events: Use 'contentMouse*' for canvas-relative coords (ignores stage padding)
+      stage.on('contentMousedown', (e) => {
+        console.log('Content mousedown event')  // Debug
+        if (rectRef.current) return
         const pos = stage.getPointerPosition()
         console.log('Mousedown pos:', pos)  // Debug
         if (!pos) return
@@ -110,7 +108,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         setIsDrawing(true)
         layer.draw()
       })
-      stage.on('mousemove', () => {
+      stage.on('contentMousemove', () => {
         if (!isDrawing || !rectRef.current) return
         const pos = stage.getPointerPosition()
         console.log('Mousemove pos:', pos)  // Debug
@@ -119,7 +117,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         rectRef.current.height(Math.max(0, pos.y - startY))
         layer.draw()
       })
-      stage.on('mouseup', () => {
+      stage.on('contentMouseup', () => {
         if (!isDrawing) return
         setIsDrawing(false)
         if (rectRef.current.width() < 50 || rectRef.current.height() < 50) {
@@ -134,7 +132,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         layer.draw()
       })
 
-      // Resize listener for zoom/page changes
+      // Resize listener
       window.addEventListener('resize', updateStageSize)
       const resizeObserver = new ResizeObserver(updateStageSize)
       resizeObserver.observe(canvas)
@@ -144,23 +142,21 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       if (stageRef.current) {
         stageRef.current.destroy()
       }
-      window.removeEventListener('resize', () => {})  // Cleanup
+      window.removeEventListener('resize', () => {})  // Placeholder; use useCallback if needed
     }
   }, [canvasRef])
 
   const handleConfirm = () => {
-    if (!rectRef.current) return;  // Use internal ref
+    if (!rectRef.current) return
     const area = {
       x: rectRef.current.x(),
       y: rectRef.current.y(),
       width: rectRef.current.width(),
       height: rectRef.current.height(),
-    };
-    if (area) {
-      onCropComplete(area);
     }
-  };
-  
+    onCropComplete(area)
+  }
+
   const handleCancel = () => {
     if (rectRef.current) {
       rectRef.current.destroy()
@@ -170,25 +166,12 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
   }
 
   return (
-    <>
-      <div 
-        ref={stageContainerRef} 
-        className="absolute inset-0 z-10 pointer-events-auto" 
-        style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} 
-      />
-      {rectRef.current && (
-        <div className="pointer-events-auto absolute right-4 top-4 flex gap-2 z-20">
-          <Button size="sm" variant="default" onClick={handleConfirm} className="shadow-lg">
-            <Check className="mr-2 h-4 w-4" />
-            Detect Signs
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleCancel} className="shadow-lg">
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-        </div>
-      )}
-    </>
+    <div 
+      ref={stageContainerRef} 
+      className="absolute inset-0 z-10 pointer-events-auto" 
+      style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} 
+    />
+    // Removed duplicate buttons - use PDFViewer toolbar only
   )
 })
 
