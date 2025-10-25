@@ -107,7 +107,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     const y = e.clientY - rect.top - cropArea.y
     setStartPos({ x, y })
     setStartArea(cropArea)
-    setIsResizing(null)  // Drag mode
+    setIsResizing(false)  // Drag mode is false
   }
 
   const handleMouseMoveBox = (e: React.MouseEvent) => {
