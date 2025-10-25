@@ -65,7 +65,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         const page = await pdfDoc.getPage(selectedPage)
         const canvas = canvasRef.current!
         const context = canvas.getContext("2d")!
-        const baseScale = 2.0 // Larger base scale for better visibility
+        const baseScale = 1.0 // Larger base scale for better visibility
         const viewport = page.getViewport({ scale: baseScale * zoom })
         canvas.height = viewport.height
         canvas.width = viewport.width
