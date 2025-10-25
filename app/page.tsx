@@ -1,7 +1,7 @@
 "use client"
 export const dynamic = 'force-dynamic';
 import { useState } from "react"
-import { dynamic as dynamicImport } from "next/dynamic"
+import dynamicImport from "next/dynamic"
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown } from "lucide-react"
