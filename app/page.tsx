@@ -1,5 +1,4 @@
 "use client"
-
 import { useState } from "react"
 import { PDFUploader } from "@/components/pdf-uploader"
 import dynamic from "next/dynamic"
@@ -19,7 +18,7 @@ interface PDFWithSigns {
 const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card">  // Changed to h-full
+    <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card"> {/* Changed to h-full */}
       <div className="text-center">
         <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         <p className="text-sm text-muted-foreground">Loading PDF viewer...</p>
@@ -96,9 +95,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">  // Added flex flex-col for full height
+    <div className="min-h-screen bg-background flex flex-col"> {/* Added flex flex-col for full height */}
       {/* Header */}
-      <header className="border-b border-border bg-card shrink-0">  // Added shrink-0 to fix header height
+      <header className="border-b border-border bg-card shrink-0"> {/* Added shrink-0 to fix header height */}
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -150,7 +149,7 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex">  // Added height constraint and flex
+      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row"> {/* Added height constraint and flex */}
         {pdfFiles.length === 0 ? (
           <div className="space-y-8">
             <div className="flex justify-center pt-8">
@@ -159,9 +158,9 @@ export default function Home() {
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full">  // Changed: h-full to fill main
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full"> {/* Changed: h-full to fill main */}
             {/* PDF Viewer with Crop Box */}
-            <div className="space-y-4 flex-1">  // Changed: flex-1 to fill grid cell
+            <div className="space-y-4 flex-1"> {/* Changed: flex-1 to fill grid cell */}
               <PDFViewer
                 file={currentPdf.file}
                 onSignsDetected={handleSignsDetected}
