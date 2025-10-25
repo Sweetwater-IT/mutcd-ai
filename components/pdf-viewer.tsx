@@ -110,7 +110,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   if (isLoading) {
     return (
-      <Card className="flex h-full items-center justify-center">  // Changed to h-full for layout fit
+      <Card className="flex h-full items-center justify-center"> 
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Loading PDF...</p>
@@ -121,7 +121,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   if (error) {
     return (
-      <Card className="flex h-full items-center justify-center">  // Changed to h-full for layout fit
+      <Card className="flex h-full items-center justify-center">  
         <div className="text-center">
           <p className="mb-4 text-sm text-destructive">{error}</p>
           <Button onClick={() => window.location.reload()}>Reload Page</Button>
@@ -131,7 +131,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   }
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden">  // Changed to h-full for layout fit
+    <Card className="flex h-full flex-col overflow-hidden">  
       {/* Toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
         <div className="flex items-center gap-2">
