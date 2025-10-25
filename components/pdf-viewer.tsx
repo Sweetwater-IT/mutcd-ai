@@ -2,18 +2,11 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react" // Removed Crop (no button)
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"  // Added Crop icon
 import dynamic from "next/dynamic"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import * as pdfjsLib from "pdfjs-dist"
-import { createClient } from '@supabase/supabase-js'  // Added: For Supabase upload
-
-// Added: Supabase client (use your env vars)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 const KonvaCropBox = dynamic(() => import("@/components/konva-crop-box").then((mod) => mod.KonvaCropBox), {
   ssr: false,
@@ -72,7 +65,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         const page = await pdfDoc.getPage(selectedPage)
         const canvas = canvasRef.current!
         const context = canvas.getContext("2d")!
-        const baseScale = 1.4 // Larger base scale for better visibility
+        const baseScale = 1.4
         const viewport = page.getViewport({ scale: baseScale * zoom })
         canvas.height = viewport.height
         canvas.width = viewport.width
@@ -92,6 +85,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
 
+  const handleEnterCropMode = () => setCropMode(true)  // New: Button to enter mode
+
   const handleStartScan = async () => {
     const area = cropBoxRef.current?.getCropArea()
     if (area && area.width > 10 && area.height > 10) {
@@ -103,7 +98,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           console.log("[v0] Detected signs:", signs)
           onSignsDetected(signs)
 
-          // Crop & export as PNG (or change to 'image/jpeg' for JPG)
+          // Crop & export as PNG
           const canvas = canvasRef.current
           const tempCanvas = document.createElement('canvas')
           tempCanvas.width = area.width
@@ -112,34 +107,19 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           if (tempCtx) {
             tempCtx.drawImage(
               canvas, 
-              area.x, area.y, area.width, area.height,  // Source rect from PDF canvas
-              0, 0, area.width, area.height  // Dest rect on temp canvas
+              area.x, area.y, area.width, area.height, 
+              0, 0, area.width, area.height
             )
-            tempCanvas.toBlob(async (blob) => {
+            tempCanvas.toBlob((blob) => {
               if (blob) {
-                // Optional: Local download
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a')
                 a.href = url
-                a.download = `crop-${file.name.replace('.pdf', '')}-${Date.now()}.png`
+                a.download = `crop-${Date.now()}.png`
                 a.click()
                 URL.revokeObjectURL(url)
-
-                // New: Upload to Supabase bucket (same as PDFs)
-                const fileName = `crop-${file.name.replace('.pdf', '')}-${Date.now()}.png`
-                const { data, error } = await supabase.storage
-                  .from('pdfs')  // Your PDF bucket name
-                  .upload(fileName, blob, { 
-                    contentType: 'image/png',  // Or 'image/jpeg' for JPG
-                    upsert: true  // Overwrite if exists
-                  })
-                if (error) {
-                  console.error('Crop upload failed:', error)
-                } else {
-                  console.log('Crop uploaded to Supabase:', data.path)
-                }
               }
-            }, 'image/png')  // For JPG: 'image/jpeg', add , 0.8 for quality
+            }, 'image/png')
           }
         }
       } catch (error) {
@@ -209,6 +189,15 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           <Button variant="outline" size="sm" onClick={handleZoomIn}>
             <ZoomIn className="h-4 w-4" />
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleEnterCropMode}  // New: Button to enter crop mode
+            disabled={cropMode}
+          >
+            <Crop className="mr-1 h-4 w-4" />
+            Draw Crop Box
+          </Button>
           {cropMode && (
             <>
               <Button
@@ -230,13 +219,13 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       <div
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-muted/10"
-        onClick={() => setCropMode(true)} // Click to start crop mode
+        // Removed onClick - button now triggers mode
       >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
             <canvas 
               ref={canvasRef} 
-              className={`shadow-lg ${cropMode ? 'pointer-events-none' : ''}`}  // Disable events during crop
+              className={`shadow-lg ${cropMode ? 'pointer-events-none' : ''}`}  // Disable events during mode
             />
             {cropMode && canvasRef.current && (
               <KonvaCropBox
