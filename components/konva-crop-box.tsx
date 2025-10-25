@@ -149,13 +149,18 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
   }, [canvasRef])
 
   const handleConfirm = () => {
-    if (!ref || !ref.current) return;  // Added: Null guard for ref
-    const area = ref.current.getCropArea();  // Now safe
+    if (!rectRef.current) return;  // Use internal ref
+    const area = {
+      x: rectRef.current.x(),
+      y: rectRef.current.y(),
+      width: rectRef.current.width(),
+      height: rectRef.current.height(),
+    };
     if (area) {
       onCropComplete(area);
     }
   };
-
+  
   const handleCancel = () => {
     if (rectRef.current) {
       rectRef.current.destroy()
