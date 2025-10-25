@@ -36,6 +36,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [startPos, setStartPos] = useState({ x: 0, y: 0 })
   const [startArea, setStartArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
 
+  const showCropBox = cropMode && cropArea.width > 0 && cropArea.height > 0;  // Added: For overlay visibility
+
   useEffect(() => {
     const loadPDF = async () => {
       try {
