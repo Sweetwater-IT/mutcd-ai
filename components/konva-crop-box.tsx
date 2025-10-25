@@ -15,7 +15,6 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
   const [isDrawing, setIsDrawing] = useState(false)
   const [startX, setStartX] = useState(0)
   const [startY, setStartY] = useState(0)
-  const [konvaLoaded, setKonvaLoaded] = useState(false)
 
   useImperativeHandle(ref, () => ({
     getCropArea: () => {
@@ -33,23 +32,17 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    console.log('KonvaCropBox mounted, canvas:', canvasRef.current)  // Debug
     import("konva").then((KonvaModule) => {
-      setKonvaLoaded(true)
       const Konva = KonvaModule.default
       const canvas = canvasRef.current
-      if (!canvas || !stageContainerRef.current) {
-        console.warn('No canvas or container for Konva')  // Debug
-        return
-      }
+      if (!canvas || !stageContainerRef.current) return
+
       const updateStageSize = () => {
         const width = canvas.offsetWidth
         const height = canvas.offsetHeight
-        if (stageRef.current) {
-          stageRef.current.width(width)
-          stageRef.current.height(height)
-          console.log('Stage resized to', width, 'x', height)  // Debug
-        }
+        stageRef.current?.width(width)
+        stageRef.current?.height(height)
+        stageRef.current?.draw()
       }
       updateStageSize()
 
@@ -60,6 +53,7 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       })
       const layer = new Konva.Layer()
       stage.add(layer)
+
       const transformer = new Konva.Transformer({
         keepRatio: false,
         enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
@@ -81,12 +75,12 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       layer.add(transformer)
       trRef.current = transformer
 
-      // Fixed Events: Use 'contentMouse*' for canvas-relative coords (ignores stage padding)
-      stage.on('contentMousedown', (e) => {
-        console.log('Content mousedown event')  // Debug
+      stageRef.current = stage
+
+      stage.on('mousedown', (e) => {
         if (rectRef.current) return
-        const pos = stage.getPointerPosition()
-        console.log('Mousedown pos:', pos)  // Debug
+        const pos = stage.getRelativePointerPosition()  // Relative to stage
+        console.log('Mousedown pos:', pos)  // Debug - remove after
         if (!pos) return
         setStartX(pos.x)
         setStartY(pos.y)
@@ -108,16 +102,16 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         setIsDrawing(true)
         layer.draw()
       })
-      stage.on('contentMousemove', () => {
+      stage.on('mousemove', () => {
         if (!isDrawing || !rectRef.current) return
-        const pos = stage.getPointerPosition()
-        console.log('Mousemove pos:', pos)  // Debug
+        const pos = stage.getRelativePointerPosition()
+        console.log('Mousemove pos:', pos)  // Debug - remove after
         if (!pos) return
         rectRef.current.width(Math.max(0, pos.x - startX))
         rectRef.current.height(Math.max(0, pos.y - startY))
         layer.draw()
       })
-      stage.on('contentMouseup', () => {
+      stage.on('mouseup', () => {
         if (!isDrawing) return
         setIsDrawing(false)
         if (rectRef.current.width() < 50 || rectRef.current.height() < 50) {
@@ -132,38 +126,18 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
         layer.draw()
       })
 
-      // Resize listener
-      window.addEventListener('resize', updateStageSize)
+      // Resize sync
       const resizeObserver = new ResizeObserver(updateStageSize)
       resizeObserver.observe(canvas)
-      stageRef.current = stage
-    })
-    return () => {
-      if (stageRef.current) {
-        stageRef.current.destroy()
+      window.addEventListener('resize', updateStageSize)
+
+      return () => {
+        resizeObserver.disconnect()
+        window.removeEventListener('resize', updateStageSize)
+        stage.destroy()
       }
-      window.removeEventListener('resize', () => {})  // Placeholder; use useCallback if needed
-    }
+    })
   }, [canvasRef])
-
-  const handleConfirm = () => {
-    if (!rectRef.current) return
-    const area = {
-      x: rectRef.current.x(),
-      y: rectRef.current.y(),
-      width: rectRef.current.width(),
-      height: rectRef.current.height(),
-    }
-    onCropComplete(area)
-  }
-
-  const handleCancel = () => {
-    if (rectRef.current) {
-      rectRef.current.destroy()
-      rectRef.current = null
-    }
-    onCancel()
-  }
 
   return (
     <div 
@@ -171,7 +145,6 @@ const KonvaCropBox = React.forwardRef<{ getCropArea: () => { x: number; y: numbe
       className="absolute inset-0 z-10 pointer-events-auto" 
       style={{ cursor: rectRef.current ? 'move' : 'crosshair' }} 
     />
-    // Removed duplicate buttons - use PDFViewer toolbar only
   )
 })
 
