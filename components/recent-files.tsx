@@ -356,11 +356,22 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
 }
 
 // Uploads file to Supabase storage and creates/updates DB entry
-export async function saveToRecentFiles(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
+export async function saveToRecentFiles(
+  fileName: string, 
+  signCount: number = 0, 
+  base64: string, 
+  detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started"
+) {
   try {
-    console.log("[Upload Debug] Starting upload for:", file.name)
-    const filePath = `${Date.now()}-${file.name}`
+    console.log("[Upload Debug] Starting upload for:", fileName)
+    const filePath = `${Date.now()}-${fileName}`
     console.log("[Upload Debug] File path:", filePath)
+    
+    // Convert base64 to Blob/File for upload
+    const response = await fetch(base64)
+    const blob = await response.blob()
+    const file = new File([blob], fileName, { type: "application/pdf" })
+    
     const { error: uploadError } = await supabase.storage
       .from('recent_mutcd_files') // Updated bucket
       .upload(filePath, file, { upsert: true })
@@ -373,7 +384,7 @@ export async function saveToRecentFiles(file: File, signCount: number = 0, detec
     const { data: existing } = await supabase
       .from('recent_mutcd_files') // Updated table
       .select('id')
-      .eq('file_name', file.name)
+      .eq('file_name', fileName)
       .single()
     if (existing) {
       // Update
@@ -389,7 +400,7 @@ export async function saveToRecentFiles(file: File, signCount: number = 0, detec
     } else {
       // Insert
       const { data, error } = await supabase.from('recent_mutcd_files').insert({ // Updated
-        file_name: file.name,
+        file_name: fileName,
         sign_count: signCount,
         processed_at: new Date().toISOString(),
         detection_status: detectionStatus,
