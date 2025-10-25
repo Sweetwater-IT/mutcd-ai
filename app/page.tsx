@@ -1,6 +1,6 @@
 "use client"
+export const forceDynamic = "force-dynamic"
 import { useState } from "react"
-import { PDFUploader } from "@/components/pdf-uploader"
 import dynamic from "next/dynamic"
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
@@ -15,10 +15,10 @@ interface PDFWithSigns {
   selectedPage: number
 }
 
-const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => mod.PDFViewer), {
+const PDFViewer = dynamic(() => import("@/components/pdf-viewer").then((mod) => ({ default: mod.PDFViewer })), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card"> {/* Changed to h-full */}
+    <div className="flex h-[calc(100vh-12rem)] items-center justify-center rounded-lg border border-border bg-card">
       <div className="text-center">
         <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         <p className="text-sm text-muted-foreground">Loading PDF viewer...</p>
@@ -54,7 +54,7 @@ export default function Home() {
             const reader = new FileReader()
             reader.onload = () => {
               const base64 = reader.result as string
-              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64)
+              saveToRecentFiles(pdf.file.name, updatedSigns.length, base64, false)
             }
             reader.readAsDataURL(pdf.file)
           }
@@ -95,9 +95,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col"> {/* Added flex flex-col for full height */}
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card shrink-0"> {/* Added shrink-0 to fix header height */}
+      <header className="border-b border-border bg-card shrink-0">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -109,7 +109,12 @@ export default function Home() {
                 <p className="text-sm text-muted-foreground">Traffic Plan Analysis Tool</p>
               </div>
             </div>
-            {pdfFiles.length > 0 && (
+            {pdfFiles.length === 0 ? (
+              <Button variant="default" onClick={() => document.getElementById("pdf-upload")?.click()}>
+                <Upload className="mr-2 h-4 w-4" />
+                Upload PDF
+              </Button>
+            ) : (
               <div className="flex items-center gap-4">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -149,18 +154,49 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row"> {/* Added height constraint and flex */}
+      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row">
         {pdfFiles.length === 0 ? (
-          <div className="space-y-8">
-            <div className="flex justify-center pt-8">
-              <PDFUploader onFileUpload={handleFileUpload} />
+          <div className="mx-auto max-w-5xl space-y-8">
+            {/* Instructions Section */}
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h2 className="mb-4 text-lg font-semibold text-foreground">Getting Started</h2>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    1
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Upload your traffic plan PDF</span> - Click the
+                    "Upload PDF" button in the top right. Multiple files are supported.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    2
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Draw a crop box</span> - Click "Draw Crop Box" and
+                    drag to select the area containing MUTCD signs.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    3
+                  </div>
+                  <p>
+                    <span className="font-medium text-foreground">Review and edit</span> - Check the detected signs in
+                    the sidebar, edit any details, and upload to BidX when ready.
+                  </p>
+                </div>
+              </div>
             </div>
+            {/* Recent Files */}
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full"> {/* Changed: h-full to fill main */}
+          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full">
             {/* PDF Viewer with Crop Box */}
-            <div className="space-y-4 flex-1"> {/* Changed: flex-1 to fill grid cell */}
+            <div className="space-y-4 flex-1">
               <PDFViewer
                 file={currentPdf.file}
                 onSignsDetected={handleSignsDetected}
