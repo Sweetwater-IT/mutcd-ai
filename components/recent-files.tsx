@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
+
 interface RecentFile {
   id: string
   file_name: string
@@ -26,9 +27,11 @@ interface RecentFile {
   detection_status: "not-started" | "successful" | "unsuccessful"
   file_url: string // Computed public URL
 }
+
 interface RecentFilesProps {
   onFileSelect: (fileUrl: string, fileName: string) => void
 }
+
 export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>([])
   const [editingFile, setEditingFile] = useState<RecentFile | null>(null)
@@ -37,6 +40,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingFile, setDeletingFile] = useState<RecentFile | null>(null)
+
   useEffect(() => {
     fetchRecentFiles()
     const channel = supabase
@@ -49,6 +53,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       supabase.removeChannel(channel)
     }
   }, [])
+
   const fetchRecentFiles = async () => {
     try {
       setLoading(true)
@@ -59,11 +64,13 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
         .select('*')
         .order('processed_at', { ascending: false })
         .limit(12)
+
       console.log("[Debug Fetch] Raw response:", { data, error })
       if (error) {
         console.error("[Debug Fetch] Supabase error details:", error)
         throw error
       }
+
       const filesWithUrls: RecentFile[] = data?.map((file: any) => ({
         id: file.id,
         file_name: file.file_name,
@@ -73,6 +80,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
         detection_status: file.detection_status,
         file_url: supabase.storage.from('recent_mutcd_files').getPublicUrl(file.file_path).data.publicUrl, // Updated bucket
       })) || []
+
       console.log("[Debug Fetch] Processed files:", filesWithUrls)
       setRecentFiles(filesWithUrls)
     } catch (err) {
@@ -82,6 +90,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       setLoading(false)
     }
   }
+
   const handleDeleteConfirm = async () => {
     if (!deletingFile) return
     try {
@@ -96,19 +105,23 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       setDeletingFile(null)
     }
   }
+
   const handleDelete = (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setDeletingFile(file)
   }
+
   const handleEdit = (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     onFileSelect(file.file_url, file.file_name)
   }
+
   const handleRename = (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingFile(file)
     setEditedFileName(file.file_name)
   }
+
   const handleSaveEdit = async () => {
     if (!editingFile || !editedFileName.trim()) return
     try {
@@ -122,6 +135,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       console.error("Failed to save edit:", err)
     }
   }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -135,6 +149,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`
     return date.toLocaleDateString()
   }
+
   const getDetectionBadge = (file: RecentFile) => {
     if (file.detection_status === "not-started") {
       return (
@@ -156,6 +171,7 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       </Badge>
     )
   }
+
   const handleUploadToBidX = async (file: RecentFile, e: React.MouseEvent) => {
     e.stopPropagation()
     setUploadingFileId(file.id)
@@ -182,12 +198,15 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
       setUploadingFileId(null)
     }
   }
+
   if (loading) {
     return <div className="text-center text-sm text-muted-foreground">Loading recent files...</div>
   }
+
   if (error) {
     return <div className="text-center text-sm text-destructive">{error}</div>
   }
+
   return (
     <div className="w-full max-w-5xl space-y-3">
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -335,8 +354,9 @@ export function RecentFiles({ onFileSelect }: RecentFilesProps) {
     </div>
   )
 }
+
 // Uploads file to Supabase storage and creates/updates DB entry
-export async function uploadToSupabase(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
+export async function saveToRecentFiles(file: File, signCount: number = 0, detectionStatus: "not-started" | "successful" | "unsuccessful" = "not-started") {
   try {
     console.log("[Upload Debug] Starting upload for:", file.name)
     const filePath = `${Date.now()}-${file.name}`
@@ -383,6 +403,7 @@ export async function uploadToSupabase(file: File, signCount: number = 0, detect
     console.error("[Upload Debug] Full error:", error)
   }
 }
+
 // Updates existing file in DB with new sign count/status
 export async function updateRecentFile(fileName: string, signCount: number) {
   try {
