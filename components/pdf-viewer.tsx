@@ -29,27 +29,25 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Simple crop state (no Konva)
-  const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
-  const [isDrawing, setIsDrawing] = useState(false)
+  // Crop state
+  const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 200, height: 200 })  // Initial 200x200
+  const [isResizing, setIsResizing] = useState(false)
+  const [resizeHandle, setResizeHandle] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null>(null)
   const [startPos, setStartPos] = useState({ x: 0, y: 0 })
-  const cropOverlayRef = useRef<HTMLDivElement>(null)
+  const [startArea, setStartArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
 
   useEffect(() => {
     const loadPDF = async () => {
       try {
         setIsLoading(true)
         setError(null)
-        console.log("[v0] Loading PDF:", file.name)
         const fileUrl = URL.createObjectURL(file)
         const loadingTask = pdfjsLib.getDocument(fileUrl)
         const pdf = await loadingTask.promise
-        console.log("[v0] PDF loaded successfully, pages:", pdf.numPages)
         setPdfDoc(pdf)
         setNumPages(pdf.numPages)
         setIsLoading(false)
       } catch (err) {
-        console.error("[v0] Error loading PDF:", err)
         setError("Failed to load PDF. Please try again.")
         setIsLoading(false)
       }
@@ -58,7 +56,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   }, [file])
 
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current || !containerRef.current) return
+    if (!pdfDoc || !canvasRef.current) return
     const renderPage = async () => {
       try {
         const page = await pdfDoc.getPage(selectedPage)
@@ -73,81 +71,109 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           viewport: viewport,
         }
         await page.render(renderContext).promise
-        console.log("[v0] Page rendered:", selectedPage)
+        // Center initial crop on new page
+        if (cropMode) {
+          const canvasRect = canvas.getBoundingClientRect()
+          const centerX = (canvas.width / 2) - 100
+          const centerY = (canvas.height / 2) - 100
+          setCropArea({ x: centerX, y: centerY, width: 200, height: 200 })
+        }
       } catch (err) {
-        console.error("[v0] Error rendering page:", err)
+        console.error("Error rendering page:", err)
       }
     }
     renderPage()
-  }, [pdfDoc, selectedPage, zoom])
+  }, [pdfDoc, selectedPage, zoom, cropMode])
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
 
   const handleEnterCropMode = () => {
     setCropMode(true)
-    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
-    setIsDrawing(false)
-  }
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!cropMode) return
-    e.preventDefault()
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    setStartPos({ x, y })
-    setIsDrawing(true)
-  }
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !cropMode) return
-    e.preventDefault()
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const newWidth = Math.abs(x - startPos.x)
-    const newHeight = Math.abs(y - startPos.y)
-    setCropArea({
-      x: Math.min(startPos.x, x),
-      y: Math.min(startPos.y, y),
-      width: newWidth,
-      height: newHeight,
-    })
-  }
-
-  const handleMouseUp = () => {
-    if (isDrawing) {
-      setIsDrawing(false)
-      if (cropArea.width < 50 || cropArea.height < 50) {
-        setCropArea({ x: 0, y: 0, width: 0, height: 0 })
-      }
+    // Center 200x200 box on current canvas
+    if (canvasRef.current) {
+      const canvas = canvasRef.current
+      const centerX = (canvas.width / 2) - 100
+      const centerY = (canvas.height / 2) - 100
+      setCropArea({ x: centerX, y: centerY, width: 200, height: 200 })
     }
   }
 
+  // Drag the whole box
+  const handleMouseDownBox = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const x = e.clientX - rect.left - cropArea.x
+    const y = e.clientY - rect.top - cropArea.y
+    setStartPos({ x, y })
+    setStartArea(cropArea)
+    setIsResizing(null)  // Drag mode
+  }
+
+  const handleMouseMoveBox = (e: React.MouseEvent) => {
+    if (!isResizing && resizeHandle === null) return
+    e.preventDefault()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    if (resizeHandle === null) {
+      // Drag
+      const deltaX = x - startPos.x - startArea.x
+      const deltaY = y - startPos.y - startArea.y
+      setCropArea({
+        x: Math.max(0, startArea.x + deltaX),
+        y: Math.max(0, startArea.y + deltaY),
+        width: startArea.width,
+        height: startArea.height,
+      })
+    } else {
+      // Resize (example for top-left; extend for others)
+      if (resizeHandle === 'top-left') {
+        const newWidth = Math.max(50, startArea.width - (x - startArea.x))
+        const newHeight = Math.max(50, startArea.height - (y - startArea.y))
+        setCropArea({
+          x: startArea.x + (startArea.width - newWidth),
+          y: startArea.y + (startArea.height - newHeight),
+          width: newWidth,
+          height: newHeight,
+        })
+      }
+      // Add cases for other handles
+    }
+  }
+
+  const handleMouseUpBox = () => {
+    setIsResizing(false)
+    setResizeHandle(null)
+  }
+
+  // Resize handles (top-left example)
+  const handleMouseDownHandle = (handle: 'top-left') => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setResizeHandle(handle)
+    setStartPos({ x: e.clientX, y: e.clientY })
+    setStartArea(cropArea)
+    setIsResizing(true)
+  }
+
   const handleStartScan = async () => {
-    if (cropArea.width < 10 || cropArea.height < 10) return
+    if (cropArea.width < 50 || cropArea.height < 50) return
     setCropMode(false)
     setIsProcessing(true)
     try {
       if (canvasRef.current) {
         const area = cropArea
         const signs = await detectSigns(canvasRef.current, area)
-        console.log("[v0] Detected signs:", signs)
         onSignsDetected(signs)
 
-        // Crop & export as PNG
+        // Export crop as PNG
         const canvas = canvasRef.current
         const tempCanvas = document.createElement('canvas')
         tempCanvas.width = area.width
         tempCanvas.height = area.height
         const tempCtx = tempCanvas.getContext('2d')
         if (tempCtx) {
-          tempCtx.drawImage(
-            canvas, 
-            area.x, area.y, area.width, area.height, 
-            0, 0, area.width, area.height
-          )
+          tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
           tempCanvas.toBlob((blob) => {
             if (blob) {
               const url = URL.createObjectURL(blob)
@@ -161,17 +187,15 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         }
       }
     } catch (error) {
-      console.error("[v0] Error detecting signs:", error)
+      console.error("Error detecting signs:", error)
     } finally {
       setIsProcessing(false)
-      setCropArea({ x: 0, y: 0, width: 0, height: 0 })
     }
   }
 
   const handleCancelCrop = () => {
     setCropMode(false)
-    setCropArea({ x: 0, y: 0, width: 0, height: 0 })
-    setIsDrawing(false)
+    setCropArea({ x: 0, y: 0, width: 200, height: 200 })
   }
 
   if (isLoading) {
@@ -195,8 +219,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
-
-  const showCropBox = cropMode && cropArea.width > 0 && cropArea.height > 0
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
@@ -266,18 +288,17 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           <div ref={canvasWrapperRef} className="relative">
             <canvas 
               ref={canvasRef} 
-              className={`shadow-lg ${cropMode ? 'pointer-events-none' : ''}`}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              style={{ cursor: cropMode ? 'crosshair' : 'default' }}
+              className="shadow-lg"
+              onMouseDown={handleMouseDownBox}
+              onMouseMove={handleMouseMoveBox}
+              onMouseUp={handleMouseUpBox}
+              style={{ cursor: cropMode ? 'move' : 'default' }}
             />
-            {/* Simple Crop Overlay */}
             {cropMode && (
               <>
                 {/* Dim overlay outside crop */}
                 <div
-                  className="absolute inset-0 pointer-events-none"
+                  className="absolute inset-0"
                   style={{
                     background: showCropBox
                       ? `
@@ -288,24 +309,34 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
                   }}
                 />
                 {/* Blue Crop Box */}
-                {showCropBox && (
-                  <div
-                    className="absolute border-2 border-blue-500 shadow-lg pointer-events-none"
-                    style={{
-                      left: `${cropArea.x}px`,
-                      top: `${cropArea.y}px`,
-                      width: `${cropArea.width}px`,
-                      height: `${cropArea.height}px`,
-                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    }}
-                  >
-                    {/* Resize Handles */}
-                    <div className="absolute -right-1 -top-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
-                    <div className="absolute -bottom-1 -right-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
-                    <div className="absolute -bottom-1 -left-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
-                    <div className="absolute -left-1 -top-1 h-2 w-2 bg-blue-500 rounded-full pointer-events-none" />
-                  </div>
-                )}
+                <div
+                  className="absolute border-2 border-blue-500 shadow-lg bg-blue-500 bg-opacity-20"
+                  style={{
+                    left: `${cropArea.x}px`,
+                    top: `${cropArea.y}px`,
+                    width: `${cropArea.width}px`,
+                    height: `${cropArea.height}px`,
+                  }}
+                  onMouseDown={handleMouseDownBox}
+                >
+                  {/* Resize Handles */}
+                  <div 
+                    className="absolute -right-1 -top-1 h-3 w-3 bg-blue-500 rounded-full cursor-nwse-resize"
+                    onMouseDown={handleMouseDownHandle('top-left')}
+                  />
+                  <div 
+                    className="absolute -bottom-1 -right-1 h-3 w-3 bg-blue-500 rounded-full cursor-nesw-resize"
+                    onMouseDown={handleMouseDownHandle('bottom-right')}
+                  />
+                  <div 
+                    className="absolute -bottom-1 -left-1 h-3 w-3 bg-blue-500 rounded-full cursor-nwse-resize"
+                    onMouseDown={handleMouseDownHandle('bottom-left')}
+                  />
+                  <div 
+                    className="absolute -left-1 -top-1 h-3 w-3 bg-blue-500 rounded-full cursor-nesw-resize"
+                    onMouseDown={handleMouseDownHandle('top-left')}
+                  />
+                </div>
               </>
             )}
           </div>
