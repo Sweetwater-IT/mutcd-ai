@@ -118,6 +118,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     if (!crop || crop.width < 50 || crop.height < 50) return
     setCropMode(false)
     setIsProcessing(true)
+    toast.info("Scanning crop...") 
+    
     try {
       if (canvasRef.current && crop) {
         const area = {
@@ -129,12 +131,19 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         let signs = await detectSigns(canvasRef.current, area)
         
         // Analyze with Grok 4
+        const startTime = Date.now();
         console.log('Calling Grok analyzer...') // NEW: Console log for verification
         toast.info("Analyzing with Grok...") // NEW: UI feedback
         setIsAnalyzingGrok(true) // NEW: Loading state
         signs = await analyzeWithGrok(signs) // Correct and refine MUTCD JSON with Grok 4 reasoning 
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 1500) 
+        {
+          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed)); // Pad to 1.5s
+        }
         console.log('Grok analysis complete:', signs) // NEW: Log output
-              
+
+        toast.info("Analysis complete!")
         onSignsDetected(signs)
         
         // Export crop as PNG (same as before)
@@ -161,6 +170,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       }
     } catch (error) {
       console.error("Error detecting signs:", error)
+      toast.error("Scan failed—try again!")
     } finally {
       setIsProcessing(false)
       setIsAnalyzingGrok(false) // NEW: End loading
