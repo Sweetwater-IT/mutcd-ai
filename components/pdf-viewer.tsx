@@ -138,8 +138,8 @@ const handleStartScan = async () => {
 
   const handleCancelCrop = () => {
     setCropMode(false)
-    setCrop(undefined)
-  }
+    setCrop({ unit: 'px', x: 0, y: 0, width: 0, height: 0 }) // NEW: Empty crop (valid type, acts as "cleared")
+}
 
   // NEW: Overlay style for dimming outside crop
   const pageDiv = pageRef.current
