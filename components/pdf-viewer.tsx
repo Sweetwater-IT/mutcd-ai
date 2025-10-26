@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react" // Aliased Crop to CropIcon
-import { detectSigns } from "@/lib/opencv-detector"
-import type { DetectedSign } from "@/lib/opencv-detector"
+import { detectSigns } from "@/lib/tesseract-detector"
+import type { MUTCDSign } from "@/types/mutcd" // Adjust path if needed
 import * as pdfjsLib from "pdfjs-dist"
 import ReactCrop, { type Crop } from 'react-image-crop' // Add this import
 import 'react-image-crop/dist/ReactCrop.css' // Add this import
