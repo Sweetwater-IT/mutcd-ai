@@ -8,7 +8,8 @@ import type { MUTCDSign } from "@/lib/types/mutcd"
 import * as pdfjsLib from "pdfjs-dist"
 import ReactCrop, { type Crop } from 'react-image-crop' 
 import 'react-image-crop/dist/ReactCrop.css' 
-import axios from 'axios' // NEW: For Grok API call
+import axios from 'axios'
+import { analyzeWithGrok } from "@/lib/grok-analyzer"
 
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
