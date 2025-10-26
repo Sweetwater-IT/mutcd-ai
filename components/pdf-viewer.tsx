@@ -2,24 +2,21 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react" // Added Crop here
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import * as pdfjsLib from "pdfjs-dist"
 import ReactCrop, { type Crop } from 'react-image-crop' // Add this import
 import 'react-image-crop/dist/ReactCrop.css' // Add this import
-
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
-
 export interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: DetectedSign[]) => void
   selectedPage: number
   onPageChange: (page: number) => void
 }
-
 export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -31,7 +28,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+ 
   // Crop state - now using react-image-crop's Crop type
   const [crop, setCrop] = useState<Crop>({
     unit: '%',
@@ -41,9 +38,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     height: 20,
   })
   const [completedCrop, setCompletedCrop] = useState<Crop | null>(null)
-
   const showCropBox = cropMode && completedCrop
-
   useEffect(() => {
     const loadPDF = async () => {
       try {
@@ -62,7 +57,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     loadPDF()
   }, [file])
-
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return
     const renderPage = async () => {
@@ -79,7 +73,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           viewport: viewport,
         }
         await page.render(renderContext).promise
-        
+       
         // Re-center crop on new page/zoom (convert % to px then back)
         if (cropMode) {
           const canvasW = canvas.width
@@ -100,25 +94,20 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     renderPage()
   }, [pdfDoc, selectedPage, zoom, cropMode])
-
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
-
   const handleEnterCropMode = () => {
     setCropMode(true)
     // Initial crop will be set on render
   }
-
   // Crop change handler
   const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
   }
-
   // Completed crop (after drag/resize end)
   const onCropComplete = (croppedArea: Crop, croppedAreaPixels: Crop) => {
     setCompletedCrop(croppedAreaPixels) // Use pixels for your logic
   }
-
   const handleStartScan = async () => {
     if (!completedCrop || completedCrop.width < 50 || completedCrop.height < 50) return
     setCropMode(false)
@@ -159,13 +148,11 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       setIsProcessing(false)
     }
   }
-
   const handleCancelCrop = () => {
     setCropMode(false)
     setCrop({ unit: '%', x: 50, y: 50, width: 20, height: 20 })
     setCompletedCrop(null)
   }
-
   if (isLoading) {
     return (
       <Card className="flex h-full items-center justify-center">
@@ -176,7 +163,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
-
   if (error) {
     return (
       <Card className="flex h-full items-center justify-center">
@@ -187,7 +173,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
-
   const canvasWidth = canvasRef.current?.width || 0
   const canvasHeight = canvasRef.current?.height || 0
   const overlayStyle = showCropBox && completedCrop
@@ -212,7 +197,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         `,
       }
     : { backgroundColor: 'rgba(0,0,0,0.1)' }
-
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
