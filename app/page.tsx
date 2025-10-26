@@ -154,8 +154,7 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      // Updated <main> section in app/page.tsx (replace the existing <main> block)
-      
+      {/* Updated <main> section in app/page.tsx (replace the existing <main> block) */}
       <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row overflow-x-hidden">
         {pdfFiles.length === 0 ? (
           <div className="mx-auto max-w-5xl space-y-8">
