@@ -80,7 +80,6 @@ const handleStartScan = async () => {
     const canvasRect = canvas.getBoundingClientRect()
     const divRect = pageDiv.getBoundingClientRect()
     const scrollOffsetX = pageDiv.scrollLeft
-    const scrollOffsetY = pageDiv.scrollLeft  // Wait, scrollY
     const scrollOffsetY = pageDiv.scrollTop
     const relativeX = crop.x + scrollOffsetX - (divRect.left - canvasRect.left)
     const relativeY = crop.y + scrollOffsetY - (divRect.top - canvasRect.top)
