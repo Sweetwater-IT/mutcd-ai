@@ -1,126 +1,129 @@
 "use client"
-import { useState } from "react"
-import { Document, Page, pdfjs } from "react-pdf"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { ZoomIn, ZoomOut, RotateCw, Crop as CropIcon } from "lucide-react"
+import { ZoomIn, ZoomOut, RotateCw, Crop as CropIcon, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { MUTCDSign } from "@/lib/types/mutcd"
 import ReactCrop, { type Crop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
+import { Document, Page, pdfjs } from "react-pdf"
 import "react-pdf/dist/esm/Page/AnnotationLayer.css"
 import "react-pdf/dist/esm/Page/TextLayer.css"
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
-interface PDFViewerProps {
-  fileUrl: string
-  onSignsDetected?: (signs: MUTCDSign[]) => void  // Optional for crop scan callback
+import axios from 'axios'
+import { analyzeWithGrok } from "@/lib/grok-analyzer"
+
+// Configure PDF.js worker for react-pdf
+if (typeof window !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 }
-export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
+
+export interface PDFViewerProps {
+  fileUrl: string
+  onSignsDetected: (signs: MUTCDSign[]) => void
+  selectedPage: number
+  onPageChange: (page: number) => void
+}
+
+export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
+  const pageRef = useRef<HTMLDivElement>(null)
   const [numPages, setNumPages] = useState<number>(0)
-  const [pageNumber, setPageNumber] = useState<number>(1)
   const [scale, setScale] = useState<number>(1.0)
   const [rotation, setRotation] = useState<number>(0)
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const pageRef = useRef<HTMLDivElement>(null)
-  // Crop state - using px for consistency
   const [crop, setCrop] = useState<Crop | undefined>(undefined)
   const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
+
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages)
-    setPageNumber(1)
   }
+
   const handleZoomIn = () => {
     setScale((prev) => Math.min(prev + 0.25, 3.0))
   }
+
   const handleZoomOut = () => {
     setScale((prev) => Math.max(prev - 0.25, 0.5))
   }
+
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360)
   }
+
   const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(prev - 1, 1))
+    onPageChange(Math.max(1, selectedPage - 1))
   }
+
   const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(prev + 1, numPages))
+    onPageChange(Math.min(numPages, selectedPage + 1))
   }
+
   const handleEnterCropMode = () => {
     setCropMode(true)
-    setCrop(undefined) // Reset to trigger re-center in effect
-    // Initial crop will be set on render
+    setCrop(undefined)
   }
-  // Crop change handler (live updates during drag/resize)
+
   const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
   }
+
   const handleStartScan = async () => {
-    if (!crop || crop.width < 50 || crop.height < 50) return;
-    setCropMode(false);
-    setIsProcessing(true);
-    toast.info("Scanning crop...");
+    if (!crop || crop.width < 50 || crop.height < 50) return
+    setCropMode(false)
+    setIsProcessing(true)
+    toast.info("Scanning crop...")
     try {
       const pageDiv = pageRef.current
       if (!pageDiv || !crop) return
-      const canvas = pageDiv.querySelector('canvas') as HTMLCanvasElement // react-pdf renders to <canvas> inside <div>
+      const canvas = pageDiv.querySelector('canvas') as HTMLCanvasElement
       if (!canvas) throw new Error('Canvas not found')
-      const area = {
-        x: crop.x,
-        y: crop.y,
-        width: crop.width,
-        height: crop.height,
-      };
-      // Extract cropped area as PNG blob (no local OCR—send raw crop to backend)
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = area.width;
-      tempCanvas.height = area.height;
-      const tempCtx = tempCanvas.getContext('2d');
-      if (tempCtx) {
-        tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
-       
-        // Convert to PNG blob
+      const area = { x: crop.x, y: crop.y, width: crop.width, height: crop.height }
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = area.width
+      tempCanvas.height = area.height
+      const tempCtx = tempCanvas.getContext('2d')
+      if (tempCtx && canvas) {
+        tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
         const pngBlob = await new Promise<Blob | null>((resolve) => {
-          tempCanvas.toBlob((blob) => resolve(blob), 'image/png');
-        });
-        if (!pngBlob) throw new Error('Failed to create PNG blob');
-        // Send to Render backend
-        const formData = new FormData();
-        formData.append('file', pngBlob, 'crop.png');
-        const startTime = Date.now();
-        toast.info("Analyzing with Grok...");
-        setIsAnalyzingGrok(true); // Your loading state
+          tempCanvas.toBlob((blob) => resolve(blob), 'image/png')
+        })
+        if (!pngBlob) throw new Error('Failed to create PNG blob')
+        const formData = new FormData()
+        formData.append('file', pngBlob, 'crop.png')
+        const startTime = Date.now()
+        toast.info("Analyzing with Grok...")
+        setIsAnalyzingGrok(true)
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/process-image`, {
           method: 'POST',
           body: formData,
-        });
-        if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-        const signs = await res.json(); // Refined MUTCDSign[] from backend
-        const elapsed = Date.now() - startTime;
+        })
+        if (!res.ok) throw new Error(`Backend error: ${res.status}`)
+        const signs = await res.json()
+        const elapsed = Date.now() - startTime
         if (elapsed < 1500) {
-          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed)); // Your padding
+          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
         }
-        console.log('Backend analysis complete:', signs);
-        toast.info("Analysis complete!");
-        if (onSignsDetected) onSignsDetected(signs); // Updates SignList via props if provided
-        // Optional: Download PNG for user (as before)
-        const url = URL.createObjectURL(pngBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `crop-${Date.now()}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
+        console.log('Backend analysis complete:', signs)
+        toast.info("Analysis complete!")
+        onSignsDetected(signs)
+        const url = URL.createObjectURL(pngBlob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `crop-${Date.now()}.png`
+        a.click()
+        URL.revokeObjectURL(url)
       }
     } catch (error) {
-      console.error("Backend processing failed:", error);
-      toast.error("Scan failed—try again!");
+      console.error("Backend processing failed:", error)
+      toast.error("Scan failed—try again!")
     } finally {
-      setIsProcessing(false);
-      setIsAnalyzingGrok(false);
-      toast.success("Scan complete!");
+      setIsProcessing(false)
+      setIsAnalyzingGrok(false)
+      toast.success("Scan complete!")
     }
-  };
-  // NEW: Function to analyze OCR JSON with Grok 4
+  }
+
   const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
     try {
       const response = await axios.post('https://api.x.ai/v1/chat/completions', {
@@ -140,26 +143,25 @@ export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
           'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
           'Content-Type': 'application/json'
         }
-      });
-      const correctedJson = response.data.choices[0].message.content;
-      return JSON.parse(correctedJson); // Assume Grok returns clean JSON
+      })
+      const correctedJson = response.data.choices[0].message.content
+      return JSON.parse(correctedJson)
     } catch (err) {
-      console.error('Grok API failed:', err);
-      return ocrSigns; // Fallback to raw OCR if API fails
+      console.error('Grok API failed:', err)
+      return ocrSigns
     }
-  };
- 
+  }
+
   const handleCancelCrop = () => {
     setCropMode(false)
     setCrop(undefined)
   }
- 
-  // Dynamically get canvas size for overlay
+
   const pageDiv = pageRef.current
   const canvas = pageDiv?.querySelector('canvas') as HTMLCanvasElement
   const canvasWidth = canvas?.width || 0
   const canvasHeight = canvas?.height || 0
- 
+
   const overlayStyle = showCropBox && crop
     ? {
         background: `
@@ -182,7 +184,7 @@ export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
         `,
       }
     : { backgroundColor: 'rgba(0,0,0,0.1)' }
- 
+
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -227,13 +229,13 @@ export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={goToPrevPage} disabled={pageNumber <= 1}>
+          <Button variant="outline" onClick={goToPrevPage} disabled={selectedPage <= 1}>
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            Page {pageNumber} of {numPages}
+            Page {selectedPage} of {numPages}
           </span>
-          <Button variant="outline" onClick={goToNextPage} disabled={pageNumber >= numPages}>
+          <Button variant="outline" onClick={goToNextPage} disabled={selectedPage >= numPages}>
             Next
           </Button>
         </div>
@@ -282,7 +284,7 @@ export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
                     }
                   >
                     <Page
-                      pageNumber={pageNumber}
+                      pageNumber={selectedPage}
                       scale={scale}
                       rotate={rotation}
                       renderTextLayer={true}
@@ -307,7 +309,7 @@ export function PDFViewer({ fileUrl, onSignsDetected }: PDFViewerProps) {
                 }
               >
                 <Page
-                  pageNumber={pageNumber}
+                  pageNumber={selectedPage}
                   scale={scale}
                   rotate={rotation}
                   renderTextLayer={true}
