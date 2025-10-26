@@ -78,14 +78,26 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         if (cropMode) {
           const canvasW = canvas.width
           const canvasH = canvas.height
-          const centerX = (canvasW / 2) - 100
-          const centerY = (canvasH / 2) - 100
-          setCrop({
+          const centerX = Math.max(0, (canvasW / 2) - 100)
+          const centerY = Math.max(0, (canvasH / 2) - 100)
+          const initialWidth = Math.min(200, canvasW / 2)
+          const initialHeight = Math.min(200, canvasH / 2)
+          const newCrop: Crop = {
             unit: '%',
             x: (centerX / canvasW) * 100,
             y: (centerY / canvasH) * 100,
-            width: (200 / canvasW) * 100,
-            height: (200 / canvasH) * 100,
+            width: (initialWidth / canvasW) * 100,
+            height: (initialHeight / canvasH) * 100,
+          }
+          setCrop(newCrop)
+          // Set completedCrop to pixel values for immediate button enable and overlay
+          setCompletedCrop({
+            ...newCrop,
+            x: centerX,
+            y: centerY,
+            width: initialWidth,
+            height: initialHeight,
+            unit: '%', // Keep % for type, but values are px-adjusted
           })
         }
       } catch (err) {
