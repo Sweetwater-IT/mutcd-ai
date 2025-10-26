@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react" // Added Crop here
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react" // Aliased Crop to CropIcon
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import * as pdfjsLib from "pdfjs-dist"
@@ -236,7 +236,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
             onClick={handleEnterCropMode}
             disabled={cropMode}
           >
-            <Crop className="mr-1 h-4 w-4" />
+            <CropIcon className="mr-1 h-4 w-4" />
             Draw Crop Box
           </Button>
           {cropMode && (
