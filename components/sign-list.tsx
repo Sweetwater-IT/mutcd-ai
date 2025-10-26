@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import type { MUTCDSign } from "@/types/mutcd" // Adjust path
+import type { MUTCDSign } from "@/lib/types/mutcd"  // Added /lib to match file location
 
 interface SignListProps {
   signs: MUTCDSign[]
