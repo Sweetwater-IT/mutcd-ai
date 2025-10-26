@@ -18,13 +18,13 @@ if (typeof window !== "undefined") {
 }
 
 export interface PDFViewerProps {
-  fileUrl: string
+  file: File | string
   onSignsDetected: (signs: MUTCDSign[]) => void
   selectedPage: number
   onPageChange: (page: number) => void
 }
 
-export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
+export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
   const pageRef = useRef<HTMLDivElement>(null)
   const [numPages, setNumPages] = useState<number>(0)
   const [scale, setScale] = useState<number>(1.0)
@@ -124,7 +124,8 @@ export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange
     }
   }
 
-  const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
+  // Renamed to avoid shadowing the imported analyzeWithGrok (unused here anyway)
+  const refineSignsWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
     try {
       const response = await axios.post('https://api.x.ai/v1/chat/completions', {
         model: 'grok-beta',
@@ -161,7 +162,6 @@ export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange
   const canvas = pageDiv?.querySelector('canvas') as HTMLCanvasElement
   const canvasWidth = canvas?.width || 0
   const canvasHeight = canvas?.height || 0
-
   const overlayStyle = showCropBox && crop
     ? {
         background: `
@@ -270,7 +270,7 @@ export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange
                   }}
                 >
                   <Document
-                    file={fileUrl}
+                    file={file}
                     onLoadSuccess={onDocumentLoadSuccess}
                     loading={
                       <div className="flex items-center justify-center h-full">
@@ -295,7 +295,7 @@ export function PDFViewer({ fileUrl, onSignsDetected, selectedPage, onPageChange
               </>
             ) : (
               <Document
-                file={fileUrl}
+                file={file}
                 onLoadSuccess={onDocumentLoadSuccess}
                 loading={
                   <div className="flex items-center justify-center h-full">
