@@ -27,6 +27,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasWrapperRef = useRef<HTMLDivElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [pdfDoc, setPdfDoc] = useState<any>(null)
@@ -59,21 +60,43 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return
+    if (!pdfDoc || !canvasRef.current || !innerRef.current) return
     const renderPage = async () => {
       try {
         const page = await pdfDoc.getPage(selectedPage)
         const canvas = canvasRef.current!
         const context = canvas.getContext("2d")!
+        const availableW = innerRef.current!.clientWidth
+        const availableH = innerRef.current!.clientHeight
+        if (availableW === 0 || availableH === 0) return
         const baseScale = 1.4
-        const viewport = page.getViewport({ scale: baseScale * zoom })
-        canvas.height = viewport.height
-        canvas.width = viewport.width
+        const desiredScale = baseScale * zoom
+        let viewport = page.getViewport({ scale: desiredScale })
+        let renderWidth = viewport.width
+        let renderHeight = viewport.height
+        let offsetX = 0
+        let offsetY = 0
+        const needsCrop = renderWidth > availableW || renderHeight > availableH
+        if (needsCrop) {
+          renderWidth = availableW
+          renderHeight = availableH
+          offsetX = (viewport.width - availableW) / 2
+          offsetY = (viewport.height - availableH) / 2
+        }
+        canvas.height = renderHeight
+        canvas.width = renderWidth
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
         }
-        await page.render(renderContext).promise
+        if (needsCrop) {
+          context.save()
+          context.translate(-offsetX, -offsetY)
+          await page.render(renderContext).promise
+          context.restore()
+        } else {
+          await page.render(renderContext).promise
+        }
        
         // Re-center crop on new page/zoom (using px)
         if (cropMode && canvasRef.current) {
@@ -336,7 +359,7 @@ const handleStartScan = async () => {
         ref={containerRef}
         className="relative flex-1 overflow-auto bg-muted/10"
       >
-        <div className="flex h-full items-center justify-center p-8">
+        <div ref={innerRef} className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
             {cropMode ? (
               <>
