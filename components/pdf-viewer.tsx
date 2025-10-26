@@ -30,6 +30,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [crop, setCrop] = useState<Crop | undefined>(undefined)
+  const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
