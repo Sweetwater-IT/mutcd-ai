@@ -65,54 +65,77 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     setCrop(newCrop)
   }
 
-  const handleStartScan = async () => {
-    if (!crop || crop.width < 50 || crop.height < 50) return
-    setCropMode(false)
-    setIsProcessing(true)
-    toast.info("Scanning crop...")
-    try {
-      const pageDiv = pageRef.current
-      if (!pageDiv || !crop) return
-      const canvas = pageDiv.querySelector('canvas') as HTMLCanvasElement
-      if (!canvas) throw new Error('Canvas not found')
-      const area = { x: crop.x, y: crop.y, width: crop.width, height: crop.height }
-      const tempCanvas = document.createElement('canvas')
-      tempCanvas.width = area.width
-      tempCanvas.height = area.height
-      const tempCtx = tempCanvas.getContext('2d')
-      if (tempCtx && canvas) {
-        tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
-        const pngBlob = await new Promise<Blob | null>((resolve) => {
-          tempCanvas.toBlob((blob) => resolve(blob), 'image/png')
-        })
-        if (!pngBlob) throw new Error('Failed to create PNG blob')
-        const formData = new FormData()
-        formData.append('file', pngBlob, 'crop.png')
-        toast.info("Analyzing with Grok...")
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/process-image`, {
-          method: 'POST',
-          body: formData,
-        })
-        if (!res.ok) throw new Error(`Backend error: ${res.status}`)
-        const signs = await res.json()
-        toast.info("Analysis complete!")
-        onSignsDetected(signs)
-        // Optional: Auto-download crop
-        const url = URL.createObjectURL(pngBlob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `crop-${Date.now()}.png`
-        a.click()
-        URL.revokeObjectURL(url)
+const handleStartScan = async () => {
+  if (!crop || crop.width < 50 || crop.height < 50) return
+  setCropMode(false)
+  setIsProcessing(true)
+  toast.info("Scanning crop...")
+  try {
+    const pageDiv = pageRef.current
+    if (!pageDiv || !crop) return
+    const canvas = pageDiv.querySelector('canvas') as HTMLCanvasElement
+    if (!canvas) throw new Error('Canvas not found')
+
+    // NEW: Get canvas rect for offset/scale adjustment
+    const canvasRect = canvas.getBoundingClientRect()
+    const divRect = pageDiv.getBoundingClientRect()
+    const scrollOffsetX = pageDiv.scrollLeft
+    const scrollOffsetY = pageDiv.scrollLeft  // Wait, scrollY
+    const scrollOffsetY = pageDiv.scrollTop
+    const relativeX = crop.x + scrollOffsetX - (divRect.left - canvasRect.left)
+    const relativeY = crop.y + scrollOffsetY - (divRect.top - canvasRect.top)
+
+    // Scale coords to canvas (react-pdf canvas is scaled)
+    const adjustedX = relativeX * scale
+    const adjustedY = relativeY * scale
+    const adjustedWidth = crop.width * scale
+    const adjustedHeight = crop.height * scale
+
+    const area = { x: adjustedX, y: adjustedY, width: adjustedWidth, height: adjustedHeight }
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = adjustedWidth
+    tempCanvas.height = adjustedHeight
+    const tempCtx = tempCanvas.getContext('2d')
+    if (tempCtx && canvas) {
+      tempCtx.drawImage(canvas, adjustedX, adjustedY, adjustedWidth, adjustedHeight, 0, 0, adjustedWidth, adjustedHeight)
+      const pngBlob = await new Promise<Blob | null>((resolve) => {
+        tempCanvas.toBlob((blob) => resolve(blob), 'image/png')
+      })
+      if (!pngBlob) throw new Error('Failed to create PNG blob')
+      const formData = new FormData()
+      formData.append('file', pngBlob, 'crop.png')
+      const startTime = Date.now()
+      toast.info("Analyzing with Grok...")
+      setIsAnalyzingGrok(true)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/process-image`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) throw new Error(`Backend error: ${res.status}`)
+      const signs = await res.json()
+      const elapsed = Date.now() - startTime
+      if (elapsed < 1500) {
+        await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
       }
-    } catch (error) {
-      console.error("Backend processing failed:", error)
-      toast.error("Scan failed—try again!")
-    } finally {
-      setIsProcessing(false)
-      toast.success("Scan complete!")
+      console.log('Backend analysis complete:', signs)
+      toast.info("Analysis complete!")
+      onSignsDetected(signs)
+      const url = URL.createObjectURL(pngBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `crop-${Date.now()}.png`
+      a.click()
+      URL.revokeObjectURL(url)
     }
+  } catch (error) {
+    console.error("Backend processing failed:", error)
+    toast.error("Scan failed—try again!")
+  } finally {
+    setIsProcessing(false)
+    setIsAnalyzingGrok(false)
+    toast.success("Scan complete!")
   }
+}
 
   const handleCancelCrop = () => {
     setCropMode(false)
