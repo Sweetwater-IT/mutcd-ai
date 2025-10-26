@@ -199,6 +199,22 @@ export default function Home() {
             {/* PDF Viewer Wrapper */}
             <div className="flex-1 overflow-auto p-4">
               <div className="space-y-4">
+                {/* Instructions Banner Above PDF Viewer */}
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-primary/10 p-2">
+                      <Crop className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground">How to detect signs</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Click <span className="font-medium text-foreground">"Draw Crop Box"</span> above, then drag to
+                        highlight the area containing traffic signs. The system will automatically analyze and detect
+                        MUTCD signs. Review results in the sidebar and edit as needed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
                 <PDFViewer
                   file={currentPdf.file}
                   onSignsDetected={handleSignsDetected}
