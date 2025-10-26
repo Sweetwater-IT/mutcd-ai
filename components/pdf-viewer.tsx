@@ -6,6 +6,9 @@ import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop } from "lucide-react"
 import { detectSigns } from "@/lib/opencv-detector"
 import type { DetectedSign } from "@/lib/opencv-detector"
 import * as pdfjsLib from "pdfjs-dist"
+import ReactCrop, { type Crop } from 'react-image-crop' // Add this import
+import 'react-image-crop/dist/ReactCrop.css' // Add this import
+
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
@@ -28,15 +31,18 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Crop state
-  const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 200, height: 200 })
-  const [isDragging, setIsDragging] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
-  const [resizeHandle, setResizeHandle] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null>(null)
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 })
-  const [startArea, setStartArea] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  
+  // Crop state - now using react-image-crop's Crop type
+  const [crop, setCrop] = useState<Crop>({
+    unit: '%',
+    x: 50,
+    y: 50,
+    width: 20, // ~200px initial, adjust based on canvas size
+    height: 20,
+  })
+  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null)
 
-  const showCropBox = cropMode && cropArea.width > 0 && cropArea.height > 0
+  const showCropBox = cropMode && completedCrop
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -73,12 +79,20 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           viewport: viewport,
         }
         await page.render(renderContext).promise
-        // Center initial crop on new page
+        
+        // Re-center crop on new page/zoom (convert % to px then back)
         if (cropMode) {
-          const canvasRect = canvas.getBoundingClientRect()
-          const centerX = Math.max(0, (canvas.width / 2) - 100)
-          const centerY = Math.max(0, (canvas.height / 2) - 100)
-          setCropArea({ x: centerX, y: centerY, width: 200, height: 200 })
+          const canvasW = canvas.width
+          const canvasH = canvas.height
+          const centerX = (canvasW / 2) - 100
+          const centerY = (canvasH / 2) - 100
+          setCrop({
+            unit: '%',
+            x: (centerX / canvasW) * 100,
+            y: (centerY / canvasH) * 100,
+            width: (200 / canvasW) * 100,
+            height: (200 / canvasH) * 100,
+          })
         }
       } catch (err) {
         console.error("Error rendering page:", err)
@@ -92,125 +106,34 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   const handleEnterCropMode = () => {
     setCropMode(true)
-    if (canvasRef.current) {
-      const canvas = canvasRef.current
-      const centerX = Math.max(0, (canvas.width / 2) - 100)
-      const centerY = Math.max(0, (canvas.height / 2) - 100)
-      setCropArea({ x: centerX, y: centerY, width: 200, height: 200 })
-    }
+    // Initial crop will be set on render
   }
 
-  // Shared mouse down for drag (on crop box) and resize (on handles)
-  const handleMouseDown = (e: React.MouseEvent, isHandle?: boolean, handleType?: typeof resizeHandle) => {
-    e.preventDefault()
-    e.stopPropagation()
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const canvasX = e.clientX - rect.left
-    const canvasY = e.clientY - rect.top
-    setStartPos({ x: canvasX, y: canvasY })
-    setStartArea(cropArea)
-    if (isHandle) {
-      setIsResizing(true)
-      setResizeHandle(handleType!)
-    } else {
-      setIsDragging(true)
-      setIsResizing(false)
-      setResizeHandle(null)
-    }
-    // Attach document listeners for drag/resize
-    document.addEventListener('mousemove', handleDocumentMouseMove)
-    document.addEventListener('mouseup', handleDocumentMouseUp)
+  // Crop change handler
+  const onCropChange = (newCrop: Crop) => {
+    setCrop(newCrop)
   }
 
-  const handleDocumentMouseMove = (e: MouseEvent) => {
-    if (!isDragging && !isResizing) return
-    e.preventDefault()
-    const rect = canvasRef.current!.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
-    const canvasWidth = canvasRef.current!.width
-    const canvasHeight = canvasRef.current!.height
-    const minSize = 50
-
-    if (!isResizing) {
-      // Drag entire box
-      const deltaX = x - startPos.x
-      const deltaY = y - startPos.y
-      const newX = Math.max(0, Math.min(startArea.x + deltaX, canvasWidth - startArea.width))
-      const newY = Math.max(0, Math.min(startArea.y + deltaY, canvasHeight - startArea.height))
-      setCropArea({ x: newX, y: newY, width: startArea.width, height: startArea.height })
-    } else if (resizeHandle) {
-      // Resize based on handle
-      let newX = startArea.x
-      let newY = startArea.y
-      let newWidth = startArea.width
-      let newHeight = startArea.height
-      const deltaX = x - startPos.x
-      const deltaY = y - startPos.y
-
-      switch (resizeHandle) {
-        case 'top-left':
-          newX = Math.max(0, startArea.x + deltaX)
-          newY = Math.max(0, startArea.y + deltaY)
-          newWidth = Math.max(minSize, startArea.width - deltaX)
-          newHeight = Math.max(minSize, startArea.height - deltaY)
-          // Adjust if width/height too small
-          if (startArea.x - newX > startArea.width - minSize) newX = startArea.x - (startArea.width - minSize)
-          if (startArea.y - newY > startArea.height - minSize) newY = startArea.y - (startArea.height - minSize)
-          break
-        case 'top-right':
-          newY = Math.max(0, startArea.y + deltaY)
-          newWidth = Math.max(minSize, startArea.width + deltaX)
-          newHeight = Math.max(minSize, startArea.height - deltaY)
-          if (newWidth > canvasWidth - startArea.x) newWidth = canvasWidth - startArea.x
-          if (startArea.y - newY > startArea.height - minSize) newY = startArea.y - (startArea.height - minSize)
-          break
-        case 'bottom-left':
-          newX = Math.max(0, startArea.x + deltaX)
-          newWidth = Math.max(minSize, startArea.width - deltaX)
-          newHeight = Math.max(minSize, startArea.height + deltaY)
-          if (newHeight > canvasHeight - startArea.y) newHeight = canvasHeight - startArea.y
-          if (startArea.x - newX > startArea.width - minSize) newX = startArea.x - (startArea.width - minSize)
-          break
-        case 'bottom-right':
-          newWidth = Math.max(minSize, startArea.width + deltaX)
-          newHeight = Math.max(minSize, startArea.height + deltaY)
-          if (newWidth > canvasWidth - startArea.x) newWidth = canvasWidth - startArea.x
-          if (newHeight > canvasHeight - startArea.y) newHeight = canvasHeight - startArea.y
-          break
-      }
-      // Clamp to bounds
-      newX = Math.max(0, Math.min(newX, canvasWidth - newWidth))
-      newY = Math.max(0, Math.min(newY, canvasHeight - newHeight))
-      setCropArea({ x: newX, y: newY, width: newWidth, height: newHeight })
-    }
-  }
-
-  const handleDocumentMouseUp = (e: MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    setIsResizing(false)
-    setResizeHandle(null)
-    // Remove document listeners
-    document.removeEventListener('mousemove', handleDocumentMouseMove)
-    document.removeEventListener('mouseup', handleDocumentMouseUp)
-  }
-
-  // Resize handle mouse down
-  const handleMouseDownHandle = (handle: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right') => (e: React.MouseEvent) => {
-    handleMouseDown(e, true, handle)
+  // Completed crop (after drag/resize end)
+  const onCropComplete = (croppedArea: Crop, croppedAreaPixels: Crop) => {
+    setCompletedCrop(croppedAreaPixels) // Use pixels for your logic
   }
 
   const handleStartScan = async () => {
-    if (cropArea.width < 50 || cropArea.height < 50) return
+    if (!completedCrop || completedCrop.width < 50 || completedCrop.height < 50) return
     setCropMode(false)
     setIsProcessing(true)
     try {
-      if (canvasRef.current) {
-        const area = cropArea
+      if (canvasRef.current && completedCrop) {
+        const area = {
+          x: completedCrop.x,
+          y: completedCrop.y,
+          width: completedCrop.width,
+          height: completedCrop.height,
+        }
         const signs = await detectSigns(canvasRef.current, area)
         onSignsDetected(signs)
-        // Export crop as PNG
+        // Export crop as PNG (same as before)
         const canvas = canvasRef.current
         const tempCanvas = document.createElement('canvas')
         tempCanvas.width = area.width
@@ -239,7 +162,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   const handleCancelCrop = () => {
     setCropMode(false)
-    setCropArea({ x: 0, y: 0, width: 200, height: 200 })
+    setCrop({ unit: '%', x: 50, y: 50, width: 20, height: 20 })
+    setCompletedCrop(null)
   }
 
   if (isLoading) {
@@ -266,36 +190,28 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   const canvasWidth = canvasRef.current?.width || 0
   const canvasHeight = canvasRef.current?.height || 0
-  const overlayStyle = showCropBox
+  const overlayStyle = showCropBox && completedCrop
     ? {
         background: `
           linear-gradient(to right,
             rgba(0,0,0,0.5) 0px,
-            rgba(0,0,0,0.5) ${cropArea.x}px,
-            transparent ${cropArea.x}px,
-            transparent ${cropArea.x + cropArea.width}px,
-            rgba(0,0,0,0.5) ${cropArea.x + cropArea.width}px,
+            rgba(0,0,0,0.5) ${completedCrop.x}px,
+            transparent ${completedCrop.x}px,
+            transparent ${completedCrop.x + completedCrop.width}px,
+            rgba(0,0,0,0.5) ${completedCrop.x + completedCrop.width}px,
             rgba(0,0,0,0.5) ${canvasWidth}px
           ),
           linear-gradient(to bottom,
             rgba(0,0,0,0.5) 0px,
-            rgba(0,0,0,0.5) ${cropArea.y}px,
-            transparent ${cropArea.y}px,
-            transparent ${cropArea.y + cropArea.height}px,
-            rgba(0,0,0,0.5) ${cropArea.y + cropArea.height}px,
+            rgba(0,0,0,0.5) ${completedCrop.y}px,
+            transparent ${completedCrop.y}px,
+            transparent ${completedCrop.y + completedCrop.height}px,
+            rgba(0,0,0,0.5) ${completedCrop.y + completedCrop.height}px,
             rgba(0,0,0,0.5) ${canvasHeight}px
           )
         `,
       }
     : { backgroundColor: 'rgba(0,0,0,0.1)' }
-
-  const cropCursor = isResizing
-    ? resizeHandle === 'top-left' || resizeHandle === 'bottom-right'
-      ? 'nwse-resize'
-      : 'nesw-resize'
-    : isDragging
-    ? 'grabbing'
-    : 'grab'
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
@@ -346,7 +262,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
                 size="sm"
                 onClick={handleStartScan}
                 className="ml-2"
-                disabled={isProcessing || cropArea.width < 50 || cropArea.height < 50}
+                disabled={isProcessing || !completedCrop || completedCrop.width < 50 || completedCrop.height < 50}
               >
                 {isProcessing ? "Processing..." : "Start Scan"}
               </Button>
@@ -363,57 +279,40 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       >
         <div className="flex h-full items-center justify-center p-8">
           <div ref={canvasWrapperRef} className="relative">
-            <canvas
-              ref={canvasRef}
-              className="shadow-lg"
-              style={{ cursor: cropMode && !showCropBox ? 'crosshair' : 'default' }}
-            />
-            {cropMode && (
+            {cropMode ? (
               <>
                 {/* Dim overlay outside crop */}
                 <div
                   className="absolute inset-0 pointer-events-none"
                   style={overlayStyle}
                 />
-                {/* Blue Crop Box */}
-                {showCropBox && (
-                  <div
-                    className="absolute border-2 border-blue-500 shadow-lg"
-                    style={{
-                      left: `${cropArea.x}px`,
-                      top: `${cropArea.y}px`,
-                      width: `${cropArea.width}px`,
-                      height: `${cropArea.height}px`,
-                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                      cursor: cropCursor,
-                    }}
-                    onMouseDown={(e) => handleMouseDown(e, false)}
-                  >
-                    {/* Resize Handles */}
-                    <div
-                      className="absolute -left-1 -top-1 h-3 w-3 bg-blue-500 rounded-full cursor-nwse-resize"
-                      onMouseDown={handleMouseDownHandle('top-left')}
-                    />
-                    <div
-                      className="absolute -right-1 -top-1 h-3 w-3 bg-blue-500 rounded-full cursor-nesw-resize"
-                      onMouseDown={handleMouseDownHandle('top-right')}
-                    />
-                    <div
-                      className="absolute -left-1 -bottom-1 h-3 w-3 bg-blue-500 rounded-full cursor-nesw-resize"
-                      onMouseDown={handleMouseDownHandle('bottom-left')}
-                    />
-                    <div
-                      className="absolute -right-1 -bottom-1 h-3 w-3 bg-blue-500 rounded-full cursor-nwse-resize"
-                      onMouseDown={handleMouseDownHandle('bottom-right')}
-                    />
-                  </div>
-                )}
+                {/* React Crop Wrapper */}
+                <ReactCrop
+                  crop={crop}
+                  onChange={onCropChange}
+                  onComplete={onCropComplete}
+                  minWidth={50}
+                  minHeight={50}
+                  circularCrop={false}
+                  aspect={undefined} // Freeform; set to number for fixed ratio
+                  style={{ // Optional: Style the cropper
+                    border: '2px solid #3b82f6', // Blue border
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Translucent blue fill
+                  }}
+                >
+                  <canvas ref={canvasRef} className="shadow-lg" />
+                </ReactCrop>
               </>
+            ) : (
+              <canvas
+                ref={canvasRef}
+                className="shadow-lg"
+              />
             )}
           </div>
         </div>
         {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-50">
             <div className="rounded-lg bg-card p-6 shadow-lg">
               <div className="flex items-center gap-3">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
