@@ -1,29 +1,33 @@
 "use client"
-
 import { useState } from "react"
 import { Document, Page, pdfjs } from "react-pdf"
 import { Button } from "@/components/ui/button"
 import { ZoomIn, ZoomOut, RotateCw } from "lucide-react"
 import "react-pdf/dist/esm/Page/AnnotationLayer.css"
 import "react-pdf/dist/esm/Page/TextLayer.css"
-
-
 // Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
-
-interface PDFViewerProps {
-  fileUrl: string
+if (typeof window !== "undefined") {
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 }
 
-export function PDFViewer({ fileUrl }: PDFViewerProps) {
+interface PDFViewerProps {
+  file: File | string
+  onSignsDetected?: (signs: any[]) => void // Stub for future sign detection
+  selectedPage: number
+  onPageChange: (page: number) => void
+}
+
+export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0)
-  const [pageNumber, setPageNumber] = useState<number>(1)
   const [scale, setScale] = useState<number>(1.0)
   const [rotation, setRotation] = useState<number>(0)
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages)
-    setPageNumber(1)
+    // Ensure selectedPage doesn't exceed numPages
+    if (selectedPage > numPages) {
+      onPageChange(1)
+    }
   }
 
   const handleZoomIn = () => {
@@ -39,11 +43,11 @@ export function PDFViewer({ fileUrl }: PDFViewerProps) {
   }
 
   const goToPrevPage = () => {
-    setPageNumber((prev) => Math.max(prev - 1, 1))
+    onPageChange(Math.max(1, selectedPage - 1))
   }
 
   const goToNextPage = () => {
-    setPageNumber((prev) => Math.min(prev + 1, numPages))
+    onPageChange(Math.min(numPages, selectedPage + 1))
   }
 
   return (
@@ -64,20 +68,18 @@ export function PDFViewer({ fileUrl }: PDFViewerProps) {
             <RotateCw className="h-4 w-4" />
           </Button>
         </div>
-
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={goToPrevPage} disabled={pageNumber <= 1}>
+          <Button variant="outline" onClick={goToPrevPage} disabled={selectedPage <= 1}>
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            Page {pageNumber} of {numPages}
+            Page {selectedPage} of {numPages}
           </span>
-          <Button variant="outline" onClick={goToNextPage} disabled={pageNumber >= numPages}>
+          <Button variant="outline" onClick={goToNextPage} disabled={selectedPage >= numPages}>
             Next
           </Button>
         </div>
       </div>
-
       {/* PDF Viewport */}
       <div className="border border-border rounded-lg bg-muted overflow-hidden">
         <div
@@ -88,7 +90,7 @@ export function PDFViewer({ fileUrl }: PDFViewerProps) {
         >
           <div className="inline-block min-w-full p-4">
             <Document
-              file={fileUrl}
+              file={file}
               onLoadSuccess={onDocumentLoadSuccess}
               loading={
                 <div className="flex items-center justify-center h-full">
@@ -102,7 +104,7 @@ export function PDFViewer({ fileUrl }: PDFViewerProps) {
               }
             >
               <Page
-                pageNumber={pageNumber}
+                pageNumber={selectedPage}
                 scale={scale}
                 rotate={rotation}
                 renderTextLayer={true}
