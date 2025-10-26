@@ -29,7 +29,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   // NEW: Crop state
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [crop, setCrop] = useState<Crop | undefined>(undefined)
+  const [crop, setCrop] = useState<Crop>({ unit: 'px', x: 0, y: 0, width: 0, height: 0 }) // NEW: Initial empty crop (no reset on click)
   const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
 
@@ -61,9 +61,9 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     // No setCrop(undefined) — crop persists now
   }
 
-  const onCropChange = (newCrop: Crop) => {
+  const onCropComplete = (newCrop: Crop) => {
     setCrop(newCrop)
-  }
+}
 
 const handleStartScan = async () => {
   if (!crop || crop.width < 50 || crop.height < 50) return
@@ -216,6 +216,7 @@ const handleStartScan = async () => {
                   minHeight={50}
                   circularCrop={false}
                   aspect={undefined}
+                  keepSelection={true} // NEW: Prevents reset on click once crop set
                   style={{ border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' }}
                 >
                   <Document
