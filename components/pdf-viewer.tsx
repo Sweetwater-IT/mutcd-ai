@@ -88,7 +88,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
             height: "70vh",
           }}
         >
-          <div className="inline-block min-w-full p-4">
+          <div className="inline-block p-4 mx-auto">
             <Document
               file={file}
               onLoadSuccess={onDocumentLoadSuccess}
