@@ -2,32 +2,46 @@ import cv2
 import pytesseract
 import re
 import json
-import io  # For in-memory image handling
+import io
 import os
+import tempfile
+import numpy as np
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from dotenv import load_dotenv
-import requests  # For Grok API call
+import requests
 
 # Load env vars
 load_dotenv()
 
 app = FastAPI(title="MUTCD Sign OCR API", description="Extract and correct sign data from images")
 
-# Your Grok analysis function (adapted to not write files)
+# Add CORS middleware (update origins to match your Next.js domain, e.g., http://localhost:3000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://your-nextjs-app.vercel.app"],  # Adjust as needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class ImageUrlRequest(BaseModel):
+    url: str
+
 def analyze_with_grok(ocr_results: List[Dict]) -> List[Dict]:
     api_key = os.getenv('XAI_API_KEY')
     if not api_key:
-        print("Warning: XAI_API_KEY not set—skipping Grok analysis.")
-        return ocr_results  # Fallback to raw
+        raise HTTPException(status_code=500, detail="XAI_API_KEY not set—Grok analysis skipped.")
     url = 'https://api.x.ai/v1/chat/completions'
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
     }
     data = {
-        'model': 'grok-beta',  # Stable model; swap to 'grok-4-fast' if you have access
+        'model': 'grok-beta',  # Or 'grok-4-fast' if available
         'messages': [
             {
                 'role': 'system',
@@ -56,37 +70,26 @@ def analyze_with_grok(ocr_results: List[Dict]) -> List[Dict]:
         print(f'Grok API failed: {e}—falling back to raw OCR.')
         return ocr_results
 
-# Main endpoint: Process uploaded image
-@app.post("/process-image", response_model=List[Dict])
-async def process_image(file: UploadFile = File(...)):
-    # Validate file
-    if not file.content_type.startswith('image/'):
-        raise HTTPException(status_code=400, detail="File must be an image")
-    
-    # Read image into memory
-    contents = await file.read()
-    nparr = io.BytesIO(contents)
-    img = cv2.imdecode(io.numpy.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
+def process_image_bytes(contents: bytes) -> List[Dict]:
+    img = cv2.imdecode(np.frombuffer(contents, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
-        raise HTTPException(status_code=400, detail="Invalid image file")
+        raise HTTPException(status_code=400, detail="Invalid image data")
     
-    # Preprocess (your original logic, in memory)
+    # Preprocess
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (0, 0), 1.0)
     sharpened = cv2.addWeighted(gray, 1.5, blurred, -0.5, 0)
     _, thresh = cv2.threshold(sharpened, 127, 255, cv2.THRESH_BINARY)
     
-    # Temp in-memory save for Tesseract (Tesseract needs a path, so use BytesIO workaround or temp file)
-    import tempfile
+    # Temp file for Tesseract
     with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
         cv2.imwrite(tmp.name, thresh)
-        # OCR
         text = pytesseract.image_to_string(tmp.name, lang='eng', config='--psm 4')
-        os.unlink(tmp.name)  # Clean up
+        os.unlink(tmp.name)
     
     print('OCR Result:\n', text)
     
-    # Parse (your original logic)
+    # Parse
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     results = []
     for line in lines:
@@ -110,12 +113,29 @@ async def process_image(file: UploadFile = File(...)):
                 'quantity': quantity
             })
     
-    # Run Grok analysis
-    corrected_results = analyze_with_grok(results)
-    
-    return JSONResponse(content=corrected_results)
+    # Grok
+    return analyze_with_grok(results)
 
-# Health check
+@app.post("/process-image", response_model=List[Dict])
+async def process_image(file: UploadFile = File(...)):
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    contents = await file.read()
+    return JSONResponse(content=process_image_bytes(contents))
+
+@app.post("/process-url", response_model=List[Dict])
+async def process_url(req: ImageUrlRequest):
+    try:
+        # Download image bytes from public URL
+        response = requests.get(req.url, timeout=30)
+        response.raise_for_status()
+        contents = response.content
+        return JSONResponse(content=process_image_bytes(contents))
+    except requests.RequestException as e:
+        raise HTTPException(status_code=400, detail=f"Failed to download image from URL: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
 @app.get("/")
 def root():
     return {"message": "MUTCD OCR API is running!"}
