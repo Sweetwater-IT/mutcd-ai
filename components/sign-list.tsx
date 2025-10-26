@@ -3,51 +3,66 @@ import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Trash2, Edit2, Check, X, Download, Upload, Loader2 } from "lucide-react"
-import type { DetectedSign } from "@/lib/opencv-detector"
-import { toast } from "sonner"  // Change to this (remove use-toast import)
+import { Download, Upload, Loader2, MoreVertical, Pencil } from "lucide-react"
+import { toast } from "sonner"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import type { MUTCDSign } from "@/types/mutcd" // Adjust path
 
 interface SignListProps {
-  signs: DetectedSign[]
-  onSignsUpdate: (signs: DetectedSign[]) => void
+  signs: MUTCDSign[]
+  onSignsUpdate: (signs: MUTCDSign[]) => void
   pdfFileName?: string
 }
-export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState("")
-  const [isUploading, setIsUploading] = useState(false)
-  // Remove: const { toast } = useToast()
 
-  const handleEdit = (sign: DetectedSign) => {
-    setEditingId(sign.id)
-    setEditValue(sign.type)
+export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
+  const [isUploading, setIsUploading] = useState(false)
+  const [editingSign, setEditingSign] = useState<MUTCDSign | null>(null)
+  const [editForm, setEditForm] = useState({ code: "", size: "", description: "", quantity: "" })
+
+  const handleOpenEdit = (sign: MUTCDSign) => {
+    setEditingSign(sign)
+    setEditForm({
+      code: sign.code,
+      size: sign.size,
+      description: sign.description,
+      quantity: sign.quantity,
+    })
   }
-  const handleSaveEdit = (id: string) => {
-    const updatedSigns = signs.map((sign) => (sign.id === id ? { ...sign, type: editValue } : sign))
+
+  const handleSaveEdit = () => {
+    if (!editingSign || !onSignsUpdate) return
+    const updatedSigns = signs.map((sign) =>
+      sign.id === editingSign.id
+        ? {
+            ...sign,
+            code: editForm.code,
+            size: editForm.size,
+            description: editForm.description,
+            quantity: editForm.quantity,
+          }
+        : sign,
+    )
     onSignsUpdate(updatedSigns)
-    setEditingId(null)
-    setEditValue("")
+    setEditingSign(null)
+    toast.success("Sign Updated", {
+      description: "The sign entry has been updated successfully.",
+    })
   }
-  const handleCancelEdit = () => {
-    setEditingId(null)
-    setEditValue("")
-  }
-  const handleDelete = (id: string) => {
-    const updatedSigns = signs.filter((sign) => sign.id !== id)
-    onSignsUpdate(updatedSigns)
-  }
+
   const handleExport = () => {
-    const exportData = signs.map((sign) => ({
-      type: sign.type,
-      confidence: `${Math.round(sign.confidence * 100)}%`,
-      location: `(${sign.boundingBox.x}, ${sign.boundingBox.y})`,
-      size: `${sign.boundingBox.width}x${sign.boundingBox.height}`,
-    }))
     const csv = [
-      ["Sign Type", "Confidence", "Location", "Size"],
-      ...exportData.map((row) => [row.type, row.confidence, row.location, row.size]),
+      ["MUTCD Code", "Description", "Dimensions", "Quantity"],
+      ...signs.map((sign) => [sign.code, sign.description, sign.size, sign.quantity || "0"]),
     ]
       .map((row) => row.join(","))
       .join("\n")
@@ -59,6 +74,7 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
     a.click()
     URL.revokeObjectURL(url)
   }
+
   const handleUploadToBidX = async () => {
     setIsUploading(true)
     try {
@@ -66,15 +82,10 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
         pdfFileName: pdfFileName || "Unknown PDF",
         uploadDate: new Date().toISOString(),
         signs: signs.map((sign) => ({
-          mutcdCode: sign.type,
-          dimensions: `${Math.round(sign.boundingBox.width)}x${Math.round(sign.boundingBox.height)}`,
-          count: 1,
-          confidence: Math.round(sign.confidence * 100),
-          isPrimary: true, // Can be enhanced to detect primary/secondary
-          location: {
-            x: Math.round(sign.boundingBox.x),
-            y: Math.round(sign.boundingBox.y),
-          },
+          mutcdCode: sign.code,
+          dimensions: sign.size,
+          count: Number.parseInt(sign.quantity) || 0,
+          description: sign.description,
         })),
         totalSigns: signs.length,
       }
@@ -88,127 +99,158 @@ export function SignList({ signs, onSignsUpdate, pdfFileName }: SignListProps) {
       if (!response.ok) {
         throw new Error("Failed to upload to BidX")
       }
-      const result = await response.json()
-      toast.success("Upload Successful", {  // Change to this
+      toast.success("Upload Successful", {
         description: `Successfully uploaded ${signs.length} signs to BidX`,
       })
     } catch (error) {
-      console.error("[v0] BidX upload error:", error)
-      toast.error("Upload Failed", {  // Change to this
+      console.error("BidX upload error:", error)
+      toast.error("Upload Failed", {
         description: error instanceof Error ? error.message : "Failed to upload to BidX. Please try again.",
       })
     } finally {
       setIsUploading(false)
     }
   }
+
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">Detected Signs</h2>
-          <p className="text-sm text-muted-foreground">{signs.length} signs found</p>
-        </div>
-        {signs.length > 0 && (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
-            <Button size="sm" onClick={handleUploadToBidX} disabled={isUploading}>
-              {isUploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload to BidX
-                </>
-              )}
-            </Button>
+    <>
+      <Card className="flex h-full flex-col">
+        <div className="border-b border-border px-4 py-3">
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold text-foreground">Detected Signs</h2>
+            <p className="text-sm text-muted-foreground">{signs.length} signs found</p>
           </div>
-        )}
-      </div>
-      <ScrollArea className="flex-1">
-        {signs.length === 0 ? (
-          <div className="flex h-full min-h-[300px] items-center justify-center p-8">
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <svg className="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
+          {signs.length > 0 && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={handleExport}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button size="sm" onClick={handleUploadToBidX} disabled={isUploading}>
+                {isUploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload to BidX
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+        <ScrollArea className="flex-1">
+          {signs.length === 0 ? (
+            <div className="flex h-full min-h-[300px] items-center justify-center p-8">
+              <div className="text-center">
+                <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <h3 className="mb-2 text-sm font-medium text-foreground">No signs detected yet</h3>
+                <p className="text-sm text-muted-foreground">Draw a crop box on the PDF to detect signs</p>
               </div>
-              <h3 className="mb-2 text-sm font-medium text-foreground">No signs detected yet</h3>
-              <p className="text-sm text-muted-foreground">Draw a crop box on the PDF to detect signs</p>
+            </div>
+          ) : (
+            <div className="p-4">
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full">
+                  <thead className="bg-muted/50">
+                    <tr className="border-b border-border">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Sign</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Dimensions</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Count</th>
+                      <th className="w-12 px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border bg-background">
+                    {signs.map((sign) => (
+                      <tr key={sign.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-semibold text-foreground">{sign.code}</span>
+                            <span className="text-sm text-muted-foreground">{sign.description}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-sm text-muted-foreground">{sign.size}</td>
+                        <td className="px-3 py-2 text-sm text-foreground">{sign.quantity || "-"}</td>
+                        <td className="px-3 py-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleOpenEdit(sign)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </ScrollArea>
+      </Card>
+      <Dialog open={!!editingSign} onOpenChange={(open) => !open && setEditingSign(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Sign Entry</DialogTitle>
+            <DialogDescription>Update the sign information if the OCR scan was incorrect.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="code">MUTCD Code</Label>
+              <Input
+                id="code"
+                value={editForm.code}
+                onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
+                placeholder="e.g., M3-1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="e.g., NORTH"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="size">Dimensions</Label>
+              <Input
+                id="size"
+                value={editForm.size}
+                onChange={(e) => setEditForm({ ...editForm, size: e.target.value })}
+                placeholder='e.g., 24" X 12"'
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                value={editForm.quantity}
+                onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                placeholder="e.g., 19"
+              />
             </div>
           </div>
-        ) : (
-          <div className="space-y-3 p-4">
-            {signs.map((sign) => (
-              <Card key={sign.id} className="overflow-hidden">
-                <div className="flex gap-3 p-3">
-                  {/* Sign Thumbnail */}
-                  <div className="flex-shrink-0">
-                    <img
-                      src={sign.imageData || "/placeholder.svg"}
-                      alt={sign.type}
-                      className="h-16 w-16 rounded border border-border object-cover"
-                    />
-                  </div>
-                  {/* Sign Details */}
-                  <div className="flex-1 space-y-2">
-                    {editingId === sign.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="h-8 text-sm"
-                          placeholder="Sign type"
-                        />
-                        <Button size="sm" variant="ghost" onClick={() => handleSaveEdit(sign.id)}>
-                          <Check className="h-4 w-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={handleCancelEdit}>
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="text-sm font-medium text-foreground">{sign.type}</h3>
-                          <div className="mt-1 flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {Math.round(sign.confidence * 100)}% confidence
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(sign)}>
-                            <Edit2 className="h-3 w-3" />
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(sign.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      Position: ({Math.round(sign.boundingBox.x)}, {Math.round(sign.boundingBox.y)}) • Size:{" "}
-                      {Math.round(sign.boundingBox.width)}×{Math.round(sign.boundingBox.height)}px
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </ScrollArea>
-    </Card>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingSign(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
