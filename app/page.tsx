@@ -5,13 +5,13 @@ import dynamicImport from "next/dynamic"
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
 import { FileText, Upload, ChevronDown } from "lucide-react"
-import type { DetectedSign } from "@/lib/opencv-detector"
+import type { MUTCDSign } from "@/lib/types/mutcd"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 interface PDFWithSigns {
   file: File
-  signs: DetectedSign[]
+  signs: MUTCDSign[]
   selectedPage: number
 }
 
@@ -44,7 +44,7 @@ export default function Home() {
     }
   }
 
-  const handleSignsDetected = (detectedSigns: DetectedSign[]) => {
+  const handleSignsDetected = (detectedSigns: MUTCDSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => {
         if (index === selectedPdfIndex) {
@@ -65,7 +65,7 @@ export default function Home() {
     )
   }
 
-  const handleSignUpdate = (updatedSigns: DetectedSign[]) => {
+  const handleSignUpdate = (updatedSigns: MUTCDSign[]) => {
     setPdfFiles((prev) =>
       prev.map((pdf, index) => (index === selectedPdfIndex ? { ...pdf, signs: updatedSigns } : pdf)),
     )
