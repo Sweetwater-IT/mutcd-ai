@@ -154,7 +154,9 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row">
+      // Updated <main> section in app/page.tsx (replace the existing <main> block)
+      
+      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row overflow-x-hidden">
         {pdfFiles.length === 0 ? (
           <div className="mx-auto max-w-5xl space-y-8">
             {/* Instructions Section */}
@@ -194,21 +196,25 @@ export default function Home() {
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full">
-            {/* PDF Viewer with Crop Box */}
-            <div className="space-y-4 flex-1">
-              <PDFViewer
-                file={currentPdf.file}
-                onSignsDetected={handleSignsDetected}
-                selectedPage={currentPdf.selectedPage}
-                onPageChange={handlePageChange}
-              />
+          <>
+            {/* PDF Viewer Wrapper */}
+            <div className="flex-1 overflow-auto p-4">
+              <div className="space-y-4">
+                <PDFViewer
+                  file={currentPdf.file}
+                  onSignsDetected={handleSignsDetected}
+                  selectedPage={currentPdf.selectedPage}
+                  onPageChange={handlePageChange}
+                />
+              </div>
             </div>
             {/* Sign List Sidebar */}
-            <div className="space-y-4">
-              <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
+            <div className="w-80 lg:w-96 shrink-0">
+              <div className="space-y-4 h-full">
+                <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
+              </div>
             </div>
-          </div>
+          </>
         )}
       </main>
       <input
