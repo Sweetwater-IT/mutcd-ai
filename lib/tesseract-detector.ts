@@ -23,11 +23,24 @@ export const detectSigns = async (
   const cropImageData = ctx.getImageData(cropArea.x, cropArea.y, cropArea.width, cropArea.height);
 
   // Preprocess: Grayscale + sharpen + threshold (port from Python, using Canvas)
-  const tempCanvas = document.createElement('canvas');
+  let tempCanvas = document.createElement('canvas');
   tempCanvas.width = cropArea.width;
   tempCanvas.height = cropArea.height;
-  const tempCtx = tempCanvas.getContext('2d')!;
+  let tempCtx = tempCanvas.getContext('2d')!;
   tempCtx.putImageData(cropImageData, 0, 0);
+
+  // **NEW: Upscale 3x for better OCR on low-res crops** (matches Python's sharp input)
+  const upscaleFactor = 3;
+  const upscaledCanvas = document.createElement('canvas');
+  upscaledCanvas.width = cropArea.width * upscaleFactor;
+  upscaledCanvas.height = cropArea.height * upscaleFactor;
+  const upscaledCtx = upscaledCanvas.getContext('2d')!;
+  upscaledCtx.imageSmoothingEnabled = true;
+  upscaledCtx.imageSmoothingQuality = 'high'; // Better interpolation
+  upscaledCtx.drawImage(tempCanvas, 0, 0, upscaledCanvas.width, upscaledCanvas.height);
+  tempCanvas = upscaledCanvas;
+  tempCtx = upscaledCtx;
+  cropArea = { ...cropArea, width: tempCanvas.width, height: tempCanvas.height }; // Update for loops
 
   // Grayscale
   const grayData = tempCtx.getImageData(0, 0, cropArea.width, cropArea.height);
@@ -60,11 +73,11 @@ export const detectSigns = async (
   }
   tempCtx.putImageData(sharpenedData, 0, 0);
 
-  // Threshold (127 as in Python)
+  // Threshold (120 for low-res scans, vs Python's 127)
   const threshData = tempCtx.getImageData(0, 0, cropArea.width, cropArea.height);
   for (let i = 0; i < threshData.data.length; i += 4) {
     threshData.data[i] = threshData.data[i + 1] = threshData.data[i + 2] =
-      threshData.data[i] > 127 ? 255 : 0;
+      threshData.data[i] > 120 ? 255 : 0; // Slightly lower for faint text in small crops
   }
   tempCtx.putImageData(threshData, 0, 0);
 
