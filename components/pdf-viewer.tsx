@@ -56,10 +56,9 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     onPageChange(Math.min(numPages, selectedPage + 1))
   }
 
-  // NEW: Crop handlers
   const handleEnterCropMode = () => {
     setCropMode(true)
-    setCrop(undefined)
+    // No setCrop(undefined) — crop persists now
   }
 
   const onCropChange = (newCrop: Crop) => {
