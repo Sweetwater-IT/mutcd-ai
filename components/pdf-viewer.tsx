@@ -13,7 +13,7 @@ if (typeof window !== "undefined") {
 }
 export interface PDFViewerProps {
   file: File
-  onSignsDetected: (signs: DetectedSign[]) => void
+  onSignsDetected: (signs: MUTCDSign[]) => void
   selectedPage: number
   onPageChange: (page: number) => void
 }
