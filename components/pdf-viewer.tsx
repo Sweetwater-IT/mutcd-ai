@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react" // Aliased Crop to CropIcon
+import { toast } from "sonner"
 import { detectSigns } from "@/lib/tesseract-detector"
 import type { MUTCDSign } from "@/lib/types/mutcd"  
 import * as pdfjsLib from "pdfjs-dist"
@@ -55,6 +56,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     loadPDF()
   }, [file])
+  const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return
@@ -126,9 +128,13 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         }
         let signs = await detectSigns(canvasRef.current, area)
         
-        // NEW: Analyze with Grok 4
+        // Analyze with Grok 4
+        console.log('Calling Grok analyzer...') // NEW: Console log for verification
+        toast.info("Analyzing with Grok...") // NEW: UI feedback
+        setIsAnalyzingGrok(true) // NEW: Loading state
         signs = await analyzeWithGrok(signs) // Correct and refine MUTCD JSON with Grok 4 reasoning 
-        
+        console.log('Grok analysis complete:', signs) // NEW: Log output
+              
         onSignsDetected(signs)
         
         // Export crop as PNG (same as before)
@@ -157,6 +163,8 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       console.error("Error detecting signs:", error)
     } finally {
       setIsProcessing(false)
+      setIsAnalyzingGrok(false) // NEW: End loading
+      toast.success("Scan complete!") // NEW: Success toast      
     }
   }
 
