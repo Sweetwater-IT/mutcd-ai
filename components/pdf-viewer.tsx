@@ -113,70 +113,81 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     setCrop(newCrop)
   }
   
-  // No need for onComplete - use live crop for everything
-  const handleStartScan = async () => {
-    if (!crop || crop.width < 50 || crop.height < 50) return
-    setCropMode(false)
-    setIsProcessing(true)
-    toast.info("Scanning crop...") 
-    
-    try {
-      if (canvasRef.current && crop) {
-        const area = {
-          x: crop.x,
-          y: crop.y,
-          width: crop.width,
-          height: crop.height,
-        }
-        let signs = await detectSigns(canvasRef.current, area)
-        
-        // Analyze with Grok 4
-        const startTime = Date.now();
-        console.log('Calling Grok analyzer...') // NEW: Console log for verification
-        toast.info("Analyzing with Grok...") // NEW: UI feedback
-        setIsAnalyzingGrok(true) // NEW: Loading state
-        signs = await analyzeWithGrok(signs) // Correct and refine MUTCD JSON with Grok 4 reasoning 
-        const elapsed = Date.now() - startTime;
-        if (elapsed < 1500) 
-        {
-          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed)); // Pad to 1.5s
-        }
-        console.log('Grok analysis complete:', signs) // NEW: Log output
+ // In pdf-viewer.tsx (full file not repeated—add this function, remove old handleStartScan & analyzeWithGrok)
+const handleStartScan = async () => {
+  if (!crop || crop.width < 50 || crop.height < 50) return;
+  setCropMode(false);
+  setIsProcessing(true);
+  toast.info("Scanning crop...");
 
-        toast.info("Analysis complete!")
-        onSignsDetected(signs)
+  try {
+    if (canvasRef.current && crop) {
+      const area = {
+        x: crop.x,
+        y: crop.y,
+        width: crop.width,
+        height: crop.height,
+      };
+
+      // Extract cropped area as PNG blob (no local OCR—send raw crop to backend)
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = area.width;
+      tempCanvas.height = area.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (tempCtx) {
+        tempCtx.drawImage(canvasRef.current, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
         
-        // Export crop as PNG (same as before)
-        const canvas = canvasRef.current
-        
-        const tempCanvas = document.createElement('canvas')
-        tempCanvas.width = area.width
-        tempCanvas.height = area.height
-        
-        const tempCtx = tempCanvas.getContext('2d')
-        if (tempCtx) {
-          tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
-          tempCanvas.toBlob((blob) => {
-            if (blob) {
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = `crop-${Date.now()}.png`
-              a.click()
-              URL.revokeObjectURL(url)
-            }
-          }, 'image/png')
+        // Convert to PNG blob
+        const pngBlob = await new Promise<Blob | null>((resolve) => {
+          tempCanvas.toBlob((blob) => resolve(blob), 'image/png');
+        });
+
+        if (!pngBlob) throw new Error('Failed to create PNG blob');
+
+        // Send to Render backend
+        const formData = new FormData();
+        formData.append('file', pngBlob, 'crop.png');
+
+        const startTime = Date.now();
+        toast.info("Analyzing with Grok...");
+        setIsAnalyzingGrok(true);  // Your loading state
+
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/process-image`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+
+        const signs = await res.json();  // Refined MUTCDSign[] from backend
+
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 1500) {
+          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed));  // Your padding
         }
+
+        console.log('Backend analysis complete:', signs);
+        toast.info("Analysis complete!");
+        onSignsDetected(signs);  // Updates SignList via props
+
+        // Optional: Download PNG for user (as before)
+        const url = URL.createObjectURL(pngBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `crop-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
       }
-    } catch (error) {
-      console.error("Error detecting signs:", error)
-      toast.error("Scan failed—try again!")
-    } finally {
-      setIsProcessing(false)
-      setIsAnalyzingGrok(false) // NEW: End loading
-      toast.success("Scan complete!") // NEW: Success toast      
     }
+  } catch (error) {
+    console.error("Backend processing failed:", error);
+    toast.error("Scan failed—try again!");
+  } finally {
+    setIsProcessing(false);
+    setIsAnalyzingGrok(false);
+    toast.success("Scan complete!");
   }
+};
 
   // NEW: Function to analyze OCR JSON with Grok 4
   const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
