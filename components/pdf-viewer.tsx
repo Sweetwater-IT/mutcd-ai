@@ -211,7 +211,7 @@ const handleStartScan = async () => {
                 {/* NEW: React Crop Wrapper */}
                 <ReactCrop
                   crop={crop}
-                  onChange={onCropChange}
+                  onCropComplete={onCropComplete} // NEW: Use complete for stability (defined function)
                   minWidth={50}
                   minHeight={50}
                   circularCrop={false}
