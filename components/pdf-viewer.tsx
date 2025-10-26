@@ -29,16 +29,9 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
  
-  // Crop state - now using react-image-crop's Crop type
-  const [crop, setCrop] = useState<Crop>({
-    unit: '%',
-    x: 50,
-    y: 50,
-    width: 20, // ~200px initial, adjust based on canvas size
-    height: 20,
-  })
-  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null)
-  const showCropBox = cropMode && completedCrop
+  // Crop state - using px for consistency
+  const [crop, setCrop] = useState<Crop | undefined>(undefined)
+  const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
   useEffect(() => {
     const loadPDF = async () => {
       try {
@@ -74,30 +67,20 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         }
         await page.render(renderContext).promise
        
-        // Re-center crop on new page/zoom (convert % to px then back)
-        if (cropMode) {
+        // Re-center crop on new page/zoom (using px)
+        if (cropMode && canvasRef.current) {
           const canvasW = canvas.width
           const canvasH = canvas.height
           const centerX = Math.max(0, (canvasW / 2) - 100)
           const centerY = Math.max(0, (canvasH / 2) - 100)
-          const initialWidth = Math.min(200, canvasW / 2)
-          const initialHeight = Math.min(200, canvasH / 2)
-          const newCrop: Crop = {
-            unit: '%',
-            x: (centerX / canvasW) * 100,
-            y: (centerY / canvasH) * 100,
-            width: (initialWidth / canvasW) * 100,
-            height: (initialHeight / canvasH) * 100,
-          }
-          setCrop(newCrop)
-          // Set completedCrop to pixel values for immediate button enable and overlay
-          setCompletedCrop({
-            ...newCrop,
+          const initialWidth = Math.min(200, canvasW - centerX)
+          const initialHeight = Math.min(200, canvasH - centerY)
+          setCrop({
+            unit: 'px',
             x: centerX,
             y: centerY,
             width: initialWidth,
             height: initialHeight,
-            unit: '%', // Keep % for type, but values are px-adjusted
           })
         }
       } catch (err) {
@@ -110,27 +93,25 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
   const handleEnterCropMode = () => {
     setCropMode(true)
+    setCrop(undefined) // Reset to trigger re-center in effect
     // Initial crop will be set on render
   }
-  // Crop change handler
+  // Crop change handler (live updates during drag/resize)
   const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
   }
-  // Completed crop (after drag/resize end)
-  const onCropComplete = (croppedArea: Crop, croppedAreaPixels: Crop) => {
-    setCompletedCrop(croppedAreaPixels) // Use pixels for your logic
-  }
+  // No need for onComplete - use live crop for everything
   const handleStartScan = async () => {
-    if (!completedCrop || completedCrop.width < 50 || completedCrop.height < 50) return
+    if (!crop || crop.width < 50 || crop.height < 50) return
     setCropMode(false)
     setIsProcessing(true)
     try {
-      if (canvasRef.current && completedCrop) {
+      if (canvasRef.current && crop) {
         const area = {
-          x: completedCrop.x,
-          y: completedCrop.y,
-          width: completedCrop.width,
-          height: completedCrop.height,
+          x: crop.x,
+          y: crop.y,
+          width: crop.width,
+          height: crop.height,
         }
         const signs = await detectSigns(canvasRef.current, area)
         onSignsDetected(signs)
@@ -162,8 +143,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   }
   const handleCancelCrop = () => {
     setCropMode(false)
-    setCrop({ unit: '%', x: 50, y: 50, width: 20, height: 20 })
-    setCompletedCrop(null)
+    setCrop(undefined)
   }
   if (isLoading) {
     return (
@@ -187,23 +167,23 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   }
   const canvasWidth = canvasRef.current?.width || 0
   const canvasHeight = canvasRef.current?.height || 0
-  const overlayStyle = showCropBox && completedCrop
+  const overlayStyle = showCropBox && crop
     ? {
         background: `
           linear-gradient(to right,
             rgba(0,0,0,0.5) 0px,
-            rgba(0,0,0,0.5) ${completedCrop.x}px,
-            transparent ${completedCrop.x}px,
-            transparent ${completedCrop.x + completedCrop.width}px,
-            rgba(0,0,0,0.5) ${completedCrop.x + completedCrop.width}px,
+            rgba(0,0,0,0.5) ${crop.x}px,
+            transparent ${crop.x}px,
+            transparent ${crop.x + crop.width}px,
+            rgba(0,0,0,0.5) ${crop.x + crop.width}px,
             rgba(0,0,0,0.5) ${canvasWidth}px
           ),
           linear-gradient(to bottom,
             rgba(0,0,0,0.5) 0px,
-            rgba(0,0,0,0.5) ${completedCrop.y}px,
-            transparent ${completedCrop.y}px,
-            transparent ${completedCrop.y + completedCrop.height}px,
-            rgba(0,0,0,0.5) ${completedCrop.y + completedCrop.height}px,
+            rgba(0,0,0,0.5) ${crop.y}px,
+            transparent ${crop.y}px,
+            transparent ${crop.y + crop.height}px,
+            rgba(0,0,0,0.5) ${crop.y + crop.height}px,
             rgba(0,0,0,0.5) ${canvasHeight}px
           )
         `,
@@ -258,7 +238,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
                 size="sm"
                 onClick={handleStartScan}
                 className="ml-2"
-                disabled={isProcessing || !completedCrop || completedCrop.width < 50 || completedCrop.height < 50}
+                disabled={isProcessing || !crop || crop.width < 50 || crop.height < 50}
               >
                 {isProcessing ? "Processing..." : "Start Scan"}
               </Button>
@@ -286,7 +266,6 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
                 <ReactCrop
                   crop={crop}
                   onChange={onCropChange}
-                  onComplete={onCropComplete}
                   minWidth={50}
                   minHeight={50}
                   circularCrop={false}
