@@ -123,7 +123,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           width: crop.width,
           height: crop.height,
         }
-        const signs = await detectSigns(canvasRef.current, area)
+        let signs = await detectSigns(canvasRef.current, area)
         
         // NEW: Analyze with Grok 4
         signs = await analyzeWithGrok(signs) // Correct and refine MUTCD JSON with Grok 4 reasoning 
