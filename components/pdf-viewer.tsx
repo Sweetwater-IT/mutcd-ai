@@ -2,18 +2,20 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react" // Aliased Crop to CropIcon
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react"
 import { toast } from "sonner"
-import { detectSigns } from "@/lib/tesseract-detector"
-import type { MUTCDSign } from "@/lib/types/mutcd"  
-import * as pdfjsLib from "pdfjs-dist"
-import ReactCrop, { type Crop } from 'react-image-crop' 
-import 'react-image-crop/dist/ReactCrop.css' 
+import type { MUTCDSign } from "@/lib/types/mutcd"
+import ReactCrop, { type Crop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
+import { Document, Page, pdfjs } from "react-pdf"
+import "react-pdf/dist/esm/Page/AnnotationLayer.css"
+import "react-pdf/dist/esm/Page/TextLayer.css"
 import axios from 'axios'
 import { analyzeWithGrok } from "@/lib/grok-analyzer"
 
+// Configure PDF.js worker for react-pdf
 if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
 }
 
 export interface PDFViewerProps {
@@ -24,32 +26,30 @@ export interface PDFViewerProps {
 }
 
 export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const canvasWrapperRef = useRef<HTMLDivElement>(null)
-  const innerRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null) // Ref for <Page> wrapper to extract canvas
   const [numPages, setNumPages] = useState(0)
-  const [zoom, setZoom] = useState(1)
-  const [pdfDoc, setPdfDoc] = useState<any>(null)
+  const [scale, setScale] = useState(1.0) // react-pdf uses 'scale' instead of 'zoom'
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
- 
+  const [fileUrl, setFileUrl] = useState<string | null>(null) // For react-pdf
   // Crop state - using px for consistency
   const [crop, setCrop] = useState<Crop | undefined>(undefined)
+  const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
+
   useEffect(() => {
     const loadPDF = async () => {
       try {
         setIsLoading(true)
         setError(null)
-        const fileUrl = URL.createObjectURL(file)
-        const loadingTask = pdfjsLib.getDocument(fileUrl)
-        const pdf = await loadingTask.promise
-        setPdfDoc(pdf)
-        setNumPages(pdf.numPages)
+        const url = URL.createObjectURL(file)
+        setFileUrl(url)
         setIsLoading(false)
+        // Cleanup on unmount
+        return () => URL.revokeObjectURL(url)
       } catch (err) {
         setError("Failed to load PDF. Please try again.")
         setIsLoading(false)
@@ -57,148 +57,85 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     loadPDF()
   }, [file])
-  const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
-  
-  useEffect(() => {
-    if (!pdfDoc || !canvasRef.current || !innerRef.current) return
-    const renderPage = async () => {
-      try {
-        const page = await pdfDoc.getPage(selectedPage)
-        const canvas = canvasRef.current!
-        const context = canvas.getContext("2d")!
-        const availableW = innerRef.current!.clientWidth
-        const availableH = innerRef.current!.clientHeight
-        if (availableW === 0 || availableH === 0) return
-        const baseScale = 1.4
-        const viewport = page.getViewport({ scale: baseScale * zoom })
-        const offsetX = (availableW - viewport.width) / 2
-        const offsetY = (availableH - viewport.height) / 2
-        canvas.width = availableW
-        canvas.height = availableH
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport,
-        }
-        context.save()
-        context.translate(offsetX, offsetY)
-        await page.render(renderContext).promise
-        context.restore()
-       
-        // Re-center crop on new page/zoom (using px)
-        if (cropMode && canvasRef.current) {
-          const canvasW = canvas.width
-          const canvasH = canvas.height
-          const centerX = Math.max(0, (canvasW / 2) - 100)
-          const centerY = Math.max(0, (canvasH / 2) - 100)
-          const initialWidth = Math.min(200, canvasW - centerX)
-          const initialHeight = Math.min(200, canvasH - centerY)
-          setCrop({
-            unit: 'px',
-            x: centerX,
-            y: centerY,
-            width: initialWidth,
-            height: initialHeight,
-          })
-        }
-      } catch (err) {
-        console.error("Error rendering page:", err)
-      }
-    }
-    renderPage()
-  }, [pdfDoc, selectedPage, zoom, cropMode])
-  
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
-  
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
-  
+
+  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
+    setNumPages(numPages)
+    if (selectedPage > numPages) onPageChange(1)
+  }
+
+  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.25, 3))
+  const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.25, 0.5))
+
   const handleEnterCropMode = () => {
     setCropMode(true)
-    setCrop(undefined) // Reset to trigger re-center in effect
-    // Initial crop will be set on render
+    setCrop(undefined) // Reset to trigger re-center
   }
-  
+
   // Crop change handler (live updates during drag/resize)
   const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
   }
-  
- // In pdf-viewer.tsx (full file not repeated—add this function, remove old handleStartScan & analyzeWithGrok)
-const handleStartScan = async () => {
-  if (!crop || crop.width < 50 || crop.height < 50) return;
-  setCropMode(false);
-  setIsProcessing(true);
-  toast.info("Scanning crop...");
 
-  try {
-    if (canvasRef.current && crop) {
-      const area = {
-        x: crop.x,
-        y: crop.y,
-        width: crop.width,
-        height: crop.height,
-      };
-
-      // Extract cropped area as PNG blob (no local OCR—send raw crop to backend)
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = area.width;
-      tempCanvas.height = area.height;
-      const tempCtx = tempCanvas.getContext('2d');
-      if (tempCtx) {
-        tempCtx.drawImage(canvasRef.current, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
-        
-        // Convert to PNG blob
+  const handleStartScan = async () => {
+    if (!crop || crop.width < 50 || crop.height < 50) return
+    setCropMode(false)
+    setIsProcessing(true)
+    toast.info("Scanning crop...")
+    try {
+      const pageDiv = pageRef.current
+      if (!pageDiv || !crop) return
+      const canvas = pageDiv.querySelector('canvas') as HTMLCanvasElement // react-pdf renders to <canvas> inside <div>
+      if (!canvas) throw new Error('Canvas not found')
+      const area = { x: crop.x, y: crop.y, width: crop.width, height: crop.height }
+      // Extract cropped area as PNG blob
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = area.width
+      tempCanvas.height = area.height
+      const tempCtx = tempCanvas.getContext('2d')
+      if (tempCtx && canvas) {
+        tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
         const pngBlob = await new Promise<Blob | null>((resolve) => {
-          tempCanvas.toBlob((blob) => resolve(blob), 'image/png');
-        });
-
-        if (!pngBlob) throw new Error('Failed to create PNG blob');
-
-        // Send to Render backend
-        const formData = new FormData();
-        formData.append('file', pngBlob, 'crop.png');
-
-        const startTime = Date.now();
-        toast.info("Analyzing with Grok...");
-        setIsAnalyzingGrok(true);  // Your loading state
-
+          tempCanvas.toBlob((blob) => resolve(blob), 'image/png')
+        })
+        if (!pngBlob) throw new Error('Failed to create PNG blob')
+        // Send to backend
+        const formData = new FormData()
+        formData.append('file', pngBlob, 'crop.png')
+        const startTime = Date.now()
+        toast.info("Analyzing with Grok...")
+        setIsAnalyzingGrok(true)
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/process-image`, {
           method: 'POST',
           body: formData,
-        });
-
-        if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-
-        const signs = await res.json();  // Refined MUTCDSign[] from backend
-
-        const elapsed = Date.now() - startTime;
+        })
+        if (!res.ok) throw new Error(`Backend error: ${res.status}`)
+        const signs = await res.json()
+        const elapsed = Date.now() - startTime
         if (elapsed < 1500) {
-          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed));  // Your padding
+          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed))
         }
-
-        console.log('Backend analysis complete:', signs);
-        toast.info("Analysis complete!");
-        onSignsDetected(signs);  // Updates SignList via props
-
-        // Optional: Download PNG for user (as before)
-        const url = URL.createObjectURL(pngBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `crop-${Date.now()}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
+        console.log('Backend analysis complete:', signs)
+        toast.info("Analysis complete!")
+        onSignsDetected(signs)
+        // Optional: Download PNG
+        const url = URL.createObjectURL(pngBlob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `crop-${Date.now()}.png`
+        a.click()
+        URL.revokeObjectURL(url)
       }
+    } catch (error) {
+      console.error("Backend processing failed:", error)
+      toast.error("Scan failed—try again!")
+    } finally {
+      setIsProcessing(false)
+      setIsAnalyzingGrok(false)
+      toast.success("Scan complete!")
     }
-  } catch (error) {
-    console.error("Backend processing failed:", error);
-    toast.error("Scan failed—try again!");
-  } finally {
-    setIsProcessing(false);
-    setIsAnalyzingGrok(false);
-    toast.success("Scan complete!");
   }
-};
 
-  // NEW: Function to analyze OCR JSON with Grok 4
+  // NEW: Function to analyze OCR JSON with Grok 4 (unchanged)
   const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
     try {
       const response = await axios.post('https://api.x.ai/v1/chat/completions', {
@@ -218,21 +155,21 @@ const handleStartScan = async () => {
           'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
           'Content-Type': 'application/json'
         }
-      });
-      const correctedJson = response.data.choices[0].message.content;
-      return JSON.parse(correctedJson); // Assume Grok returns clean JSON
+      })
+      const correctedJson = response.data.choices[0].message.content
+      return JSON.parse(correctedJson)
     } catch (err) {
-      console.error('Grok API failed:', err);
-      return ocrSigns; // Fallback to raw OCR if API fails
+      console.error('Grok API failed:', err)
+      return ocrSigns
     }
-  };
-  
+  }
+
   const handleCancelCrop = () => {
     setCropMode(false)
     setCrop(undefined)
   }
-  
-  if (isLoading) {
+
+  if (isLoading || !fileUrl) {
     return (
       <Card className="flex h-full items-center justify-center">
         <div className="text-center">
@@ -242,7 +179,7 @@ const handleStartScan = async () => {
       </Card>
     )
   }
-  
+
   if (error) {
     return (
       <Card className="flex h-full items-center justify-center">
@@ -253,11 +190,9 @@ const handleStartScan = async () => {
       </Card>
     )
   }
-  
-  const canvasWidth = canvasRef.current?.width || 0
-  
-  const canvasHeight = canvasRef.current?.height || 0
-  
+
+  const canvasWidth = 0 // Not needed anymore; react-pdf handles
+  const canvasHeight = 0
   const overlayStyle = showCropBox && crop
     ? {
         background: `
@@ -280,10 +215,10 @@ const handleStartScan = async () => {
         `,
       }
     : { backgroundColor: 'rgba(0,0,0,0.1)' }
-  
+
   return (
     <Card className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
+      {/* Toolbar - unchanged */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
         <div className="flex items-center gap-2">
           <Button
@@ -310,7 +245,7 @@ const handleStartScan = async () => {
           <Button variant="outline" size="sm" onClick={handleZoomOut}>
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-sm text-foreground">{Math.round(zoom * 100)}%</span>
+          <span className="text-sm text-foreground">{Math.round(scale * 100)}%</span>
           <Button variant="outline" size="sm" onClick={handleZoomIn}>
             <ZoomIn className="h-4 w-4" />
           </Button>
@@ -343,10 +278,10 @@ const handleStartScan = async () => {
       </div>
       <div
         ref={containerRef}
-        className="relative flex-1 overflow-auto bg-muted/10"
+        className="relative flex-1 bg-muted/10" // Dropped overflow-auto; react-pdf clips inside
       >
-        <div ref={innerRef} className="flex h-full items-center justify-center p-8">
-          <div ref={canvasWrapperRef} className="relative">
+        <div className="flex h-full items-center justify-center p-8"> {/* Fixed container for centering/clipping */}
+          <div className="relative"> {/* Wrapper for crop/overlay */}
             {cropMode ? (
               <>
                 {/* Dim overlay outside crop */}
@@ -354,27 +289,54 @@ const handleStartScan = async () => {
                   className="absolute inset-0 pointer-events-none"
                   style={overlayStyle}
                 />
-                {/* React Crop Wrapper */}
+                {/* React Crop Wrapper around Page */}
                 <ReactCrop
                   crop={crop}
                   onChange={onCropChange}
                   minWidth={50}
                   minHeight={50}
                   circularCrop={false}
-                  aspect={undefined} // Freeform; set to number for fixed ratio
-                  style={{ // Optional: Style the cropper
-                    border: '2px solid #3b82f6', // Blue border
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Translucent blue fill
+                  aspect={undefined}
+                  style={{
+                    border: '2px solid #3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
                   }}
                 >
-                  <canvas ref={canvasRef} className="shadow-lg" />
+                  <div ref={pageRef}>
+                    <Document
+                      file={fileUrl}
+                      onLoadSuccess={onDocumentLoadSuccess}
+                      loading={<div className="flex items-center justify-center h-32"><p>Loading...</p></div>}
+                      error={<div className="flex items-center justify-center h-32"><p>PDF Error</p></div>}
+                    >
+                      <Page
+                        pageNumber={selectedPage}
+                        scale={scale}
+                        renderTextLayer={true}
+                        renderAnnotationLayer={true}
+                        className="max-w-full max-h-full" // Prevents bursting container
+                      />
+                    </Document>
+                  </div>
                 </ReactCrop>
               </>
             ) : (
-              <canvas
-                ref={canvasRef}
-                className="shadow-lg"
-              />
+              <div ref={pageRef}>
+                <Document
+                  file={fileUrl}
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  loading={<div className="flex items-center justify-center h-32"><p>Loading...</p></div>}
+                  error={<div className="flex items-center justify-center h-32"><p>PDF Error</p></div>}
+                >
+                  <Page
+                    pageNumber={selectedPage}
+                    scale={scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="max-w-full max-h-full shadow-lg" // Your shadow class
+                  />
+                </Document>
+              </div>
             )}
           </div>
         </div>
