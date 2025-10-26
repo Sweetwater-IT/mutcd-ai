@@ -210,16 +210,16 @@ const handleStartScan = async () => {
                 <div className="absolute inset-0 pointer-events-none" style={overlayStyle} />
                 {/* NEW: React Crop Wrapper */}
                 <ReactCrop
-                    crop={crop}
-                    onChange={onCropComplete} // FIXED: Required for drag updates (uses your existing function)
-                    onComplete={onCropComplete} // Optional: Also for end events (same function OK)
-                    minWidth={50}
-                    minHeight={50}
-                    circularCrop={false}
-                    aspect={undefined}
-                    keepSelection={true}
-                    style={{ border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' }}
-                  >
+                  crop={crop}
+                  onChange={onCropComplete} // FIXED: Required for live drag (uses your existing function)
+                  onComplete={onCropComplete} // Optional: End event (same function OK)
+                  minWidth={50}
+                  minHeight={50}
+                  circularCrop={false}
+                  aspect={undefined}
+                  keepSelection={true}
+                  style={{ border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' }}
+                >
                   <Document
                     file={file}
                     onLoadSuccess={onDocumentLoadSuccess}
