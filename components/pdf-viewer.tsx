@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react"
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon, RotateCw } from "lucide-react"
 import { toast } from "sonner"
 import type { MUTCDSign } from "@/lib/types/mutcd"
 import ReactCrop, { type Crop } from 'react-image-crop'
@@ -26,15 +26,15 @@ export interface PDFViewerProps {
 }
 
 export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null) // Ref for <Page> wrapper to extract canvas
-  const [numPages, setNumPages] = useState(0)
-  const [scale, setScale] = useState(1.0) // react-pdf uses 'scale' instead of 'zoom'
+  const [numPages, setNumPages] = useState<number>(0)
+  const [scale, setScale] = useState<number>(1.0)
+  const [rotation, setRotation] = useState<number>(0)
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [fileUrl, setFileUrl] = useState<string | null>(null) // For react-pdf
+  const [fileUrl, setFileUrl] = useState<string | null>(null)
   // Crop state - using px for consistency
   const [crop, setCrop] = useState<Crop | undefined>(undefined)
   const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
@@ -63,8 +63,25 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     if (selectedPage > numPages) onPageChange(1)
   }
 
-  const handleZoomIn = () => setScale((prev) => Math.min(prev + 0.25, 3))
-  const handleZoomOut = () => setScale((prev) => Math.max(prev - 0.25, 0.5))
+  const handleZoomIn = () => {
+    setScale((prev) => Math.min(prev + 0.25, 3.0))
+  }
+
+  const handleZoomOut = () => {
+    setScale((prev) => Math.max(prev - 0.25, 0.5))
+  }
+
+  const handleRotate = () => {
+    setRotation((prev) => (prev + 90) % 360)
+  }
+
+  const goToPrevPage = () => {
+    onPageChange(Math.max(1, selectedPage - 1))
+  }
+
+  const goToNextPage = () => {
+    onPageChange(Math.min(numPages, selectedPage + 1))
+  }
 
   const handleEnterCropMode = () => {
     setCropMode(true)
@@ -171,28 +188,32 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   if (isLoading || !fileUrl) {
     return (
-      <Card className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Loading PDF...</p>
         </div>
-      </Card>
+      </div>
     )
   }
 
   if (error) {
     return (
-      <Card className="flex h-full items-center justify-center">
+      <div className="flex h-full items-center justify-center">
         <div className="text-center">
           <p className="mb-4 text-sm text-destructive">{error}</p>
           <Button onClick={() => window.location.reload()}>Reload Page</Button>
         </div>
-      </Card>
+      </div>
     )
   }
 
-  const canvasWidth = 0 // Not needed anymore; react-pdf handles
-  const canvasHeight = 0
+  // Dynamically get canvas size for overlay
+  const pageDiv = pageRef.current
+  const canvas = pageDiv?.querySelector('canvas') as HTMLCanvasElement
+  const canvasWidth = canvas?.width || 0
+  const canvasHeight = canvas?.height || 0
+
   const overlayStyle = showCropBox && crop
     ? {
         background: `
@@ -218,126 +239,140 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar - unchanged */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(Math.max(1, selectedPage - 1))}
-            disabled={selectedPage === 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-foreground">
-            Page {selectedPage} of {numPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onPageChange(Math.min(numPages, selectedPage + 1))}
-            disabled={selectedPage === numPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleZoomOut}>
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-foreground">{Math.round(scale * 100)}%</span>
-          <Button variant="outline" size="sm" onClick={handleZoomIn}>
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEnterCropMode}
-            disabled={cropMode}
-          >
-            <CropIcon className="mr-1 h-4 w-4" />
-            Draw Crop Box
-          </Button>
-          {cropMode && (
-            <>
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleStartScan}
-                className="ml-2"
-                disabled={isProcessing || !crop || crop.width < 50 || crop.height < 50}
-              >
-                {isProcessing ? "Processing..." : "Start Scan"}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleCancelCrop}>
-                Cancel
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-      <div
-        ref={containerRef}
-        className="relative flex-1 bg-muted/10" // Dropped overflow-auto; react-pdf clips inside
-      >
-        <div className="flex h-full items-center justify-center p-8"> {/* Fixed container for centering/clipping */}
-          <div className="relative"> {/* Wrapper for crop/overlay */}
-            {cropMode ? (
+      <div className="space-y-4 p-4">
+        {/* Controls - Matched to v0 layout */}
+        <div className="flex items-center justify-between bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={handleZoomOut} disabled={scale <= 0.5}>
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="text-sm font-medium text-card-foreground min-w-16 text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <Button variant="outline" size="icon" onClick={handleZoomIn} disabled={scale >= 3.0}>
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={handleRotate}>
+              <RotateCw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleEnterCropMode}
+              disabled={cropMode}
+            >
+              <CropIcon className="h-4 w-4" />
+            </Button>
+            {cropMode && (
               <>
-                {/* Dim overlay outside crop */}
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={overlayStyle}
-                />
-                {/* React Crop Wrapper around Page */}
-                <ReactCrop
-                  crop={crop}
-                  onChange={onCropChange}
-                  minWidth={50}
-                  minHeight={50}
-                  circularCrop={false}
-                  aspect={undefined}
-                  style={{
-                    border: '2px solid #3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                  }}
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleStartScan}
+                  disabled={isProcessing || !crop || crop.width < 50 || crop.height < 50}
                 >
-                  <div ref={pageRef}>
-                    <Document
-                      file={fileUrl}
-                      onLoadSuccess={onDocumentLoadSuccess}
-                      loading={<div className="flex items-center justify-center h-32"><p>Loading...</p></div>}
-                      error={<div className="flex items-center justify-center h-32"><p>PDF Error</p></div>}
-                    >
-                      <Page
-                        pageNumber={selectedPage}
-                        scale={scale}
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                        className="max-w-full max-h-full" // Prevents bursting container
-                      />
-                    </Document>
-                  </div>
-                </ReactCrop>
+                  {isProcessing ? "Processing..." : "Start Scan"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleCancelCrop}>
+                  Cancel
+                </Button>
               </>
-            ) : (
-              <div ref={pageRef}>
-                <Document
-                  file={fileUrl}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  loading={<div className="flex items-center justify-center h-32"><p>Loading...</p></div>}
-                  error={<div className="flex items-center justify-center h-32"><p>PDF Error</p></div>}
-                >
-                  <Page
-                    pageNumber={selectedPage}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="max-w-full max-h-full shadow-lg" // Your shadow class
-                  />
-                </Document>
-              </div>
             )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={goToPrevPage} disabled={selectedPage <= 1}>
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {selectedPage} of {numPages}
+            </span>
+            <Button variant="outline" onClick={goToNextPage} disabled={selectedPage >= numPages}>
+              Next
+            </Button>
+          </div>
+        </div>
+        {/* PDF Viewport - Matched to v0, with fixed height and clipping */}
+        <div className="border border-border rounded-lg bg-muted overflow-hidden">
+          <div
+            className="flex h-[70vh] items-center justify-center p-4"
+            style={{ overflow: "hidden" }}
+          >
+            <div className="relative inline-block max-w-full max-h-full">
+              {cropMode ? (
+                <>
+                  {/* Dim overlay outside crop */}
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={overlayStyle}
+                  />
+                  {/* React Crop Wrapper around Page */}
+                  <ReactCrop
+                    crop={crop}
+                    onChange={onCropChange}
+                    minWidth={50}
+                    minHeight={50}
+                    circularCrop={false}
+                    aspect={undefined}
+                    style={{
+                      border: '2px solid #3b82f6',
+                      backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    }}
+                  >
+                    <div ref={pageRef}>
+                      <Document
+                        file={fileUrl}
+                        onLoadSuccess={onDocumentLoadSuccess}
+                        loading={
+                          <div className="flex items-center justify-center h-full w-full">
+                            <p className="text-muted-foreground">Loading PDF...</p>
+                          </div>
+                        }
+                        error={
+                          <div className="flex items-center justify-center h-full w-full">
+                            <p className="text-destructive">Failed to load PDF</p>
+                          </div>
+                        }
+                      >
+                        <Page
+                          pageNumber={selectedPage}
+                          scale={scale}
+                          rotate={rotation}
+                          renderTextLayer={true}
+                          renderAnnotationLayer={true}
+                          className="shadow-lg"
+                        />
+                      </Document>
+                    </div>
+                  </ReactCrop>
+                </>
+              ) : (
+                <div ref={pageRef}>
+                  <Document
+                    file={fileUrl}
+                    onLoadSuccess={onDocumentLoadSuccess}
+                    loading={
+                      <div className="flex items-center justify-center h-full w-full">
+                        <p className="text-muted-foreground">Loading PDF...</p>
+                      </div>
+                    }
+                    error={
+                      <div className="flex items-center justify-center h-full w-full">
+                        <p className="text-destructive">Failed to load PDF</p>
+                      </div>
+                    }
+                  >
+                    <Page
+                      pageNumber={selectedPage}
+                      scale={scale}
+                      rotate={rotation}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="shadow-lg"
+                    />
+                  </Document>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {isProcessing && (
