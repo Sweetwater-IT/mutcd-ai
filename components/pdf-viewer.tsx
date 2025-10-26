@@ -4,19 +4,23 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Crop as CropIcon } from "lucide-react" // Aliased Crop to CropIcon
 import { detectSigns } from "@/lib/tesseract-detector"
-import type { MUTCDSign } from "@/lib/types/mutcd"  // Added /lib to match your file location
+import type { MUTCDSign } from "@/lib/types/mutcd"  
 import * as pdfjsLib from "pdfjs-dist"
-import ReactCrop, { type Crop } from 'react-image-crop' // Add this import
-import 'react-image-crop/dist/ReactCrop.css' // Add this import
+import ReactCrop, { type Crop } from 'react-image-crop' 
+import 'react-image-crop/dist/ReactCrop.css' 
+import axios from 'axios' // NEW: For Grok API call
+
 if (typeof window !== "undefined") {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 }
+
 export interface PDFViewerProps {
   file: File
   onSignsDetected: (signs: MUTCDSign[]) => void
   selectedPage: number
   onPageChange: (page: number) => void
 }
+
 export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }: PDFViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -50,6 +54,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     loadPDF()
   }, [file])
+  
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return
     const renderPage = async () => {
@@ -89,17 +94,22 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     }
     renderPage()
   }, [pdfDoc, selectedPage, zoom, cropMode])
+  
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3))
+  
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5))
+  
   const handleEnterCropMode = () => {
     setCropMode(true)
     setCrop(undefined) // Reset to trigger re-center in effect
     // Initial crop will be set on render
   }
+  
   // Crop change handler (live updates during drag/resize)
   const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
   }
+  
   // No need for onComplete - use live crop for everything
   const handleStartScan = async () => {
     if (!crop || crop.width < 50 || crop.height < 50) return
@@ -114,12 +124,19 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
           height: crop.height,
         }
         const signs = await detectSigns(canvasRef.current, area)
+        
+        // NEW: Analyze with Grok 4
+        signs = await analyzeWithGrok(signs) // Correct and refine MUTCD JSON with Grok 4 reasoning 
+        
         onSignsDetected(signs)
+        
         // Export crop as PNG (same as before)
         const canvas = canvasRef.current
+        
         const tempCanvas = document.createElement('canvas')
         tempCanvas.width = area.width
         tempCanvas.height = area.height
+        
         const tempCtx = tempCanvas.getContext('2d')
         if (tempCtx) {
           tempCtx.drawImage(canvas, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height)
@@ -141,10 +158,41 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       setIsProcessing(false)
     }
   }
+
+  // NEW: Function to analyze OCR JSON with Grok 4
+  const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[]> => {
+    try {
+      const response = await axios.post('https://api.x.ai/v1/chat/completions', {
+        model: 'grok-beta',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a MUTCD sign expert. Analyze and correct this OCR-extracted JSON for accuracy: Fix codes (e.g., "Ma-8" to "M4-8"), remove artifacts (e.g., "|"), add full descriptions from MUTCD standards, infer quantities if possible. Return only corrected JSON array.'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(ocrSigns)
+          }
+        ],
+      }, {
+        headers: {
+          'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const correctedJson = response.data.choices[0].message.content;
+      return JSON.parse(correctedJson); // Assume Grok returns clean JSON
+    } catch (err) {
+      console.error('Grok API failed:', err);
+      return ocrSigns; // Fallback to raw OCR if API fails
+    }
+  };
+  
   const handleCancelCrop = () => {
     setCropMode(false)
     setCrop(undefined)
   }
+  
   if (isLoading) {
     return (
       <Card className="flex h-full items-center justify-center">
@@ -155,6 +203,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
+  
   if (error) {
     return (
       <Card className="flex h-full items-center justify-center">
@@ -165,8 +214,11 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
       </Card>
     )
   }
+  
   const canvasWidth = canvasRef.current?.width || 0
+  
   const canvasHeight = canvasRef.current?.height || 0
+  
   const overlayStyle = showCropBox && crop
     ? {
         background: `
@@ -189,6 +241,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         `,
       }
     : { backgroundColor: 'rgba(0,0,0,0.1)' }
+  
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
