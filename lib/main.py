@@ -45,7 +45,7 @@ def analyze_with_grok(ocr_results: List[Dict]) -> List[Dict]:
         'messages': [
             {
                 'role': 'system',
-                'content': '''You are a MUTCD sign expert. Analyze and correct this OCR-extracted JSON for accuracy: Fix codes (e.g., "Ma-8" to "M4-8"), remove artifacts (e.g., "|", commas), add full descriptions from MUTCD standards, infer quantities if possible. Return ONLY the corrected JSON array—no extra text.
+                'content': '''You are a MUTCD sign expert. Analyze and correct this OCR-extracted JSON for accuracy: Fix codes (e.g., "Ma-8" to "M4-8"), remove artifacts (e.g., "|", commas), add full descriptions from MUTCD standards, infer quantities if possible. Return ONLY the corrected JSON array — no extra text.
                 - Match the MUTCD code to the description because the description is easier for the OCR to read. the MUTCD code should always be matched to the description it should never be the description right and mutcd code wrong. always check the mutcd code youre outputting against the description.'''
             },
             {
@@ -67,7 +67,7 @@ def analyze_with_grok(ocr_results: List[Dict]) -> List[Dict]:
         print('Grok Analysis Complete:', corrected_results)
         return corrected_results
     except Exception as e:
-        print(f'Grok API failed: {e}—falling back to raw OCR.')
+        print(f'Grok API failed: {e} — falling back to raw OCR.')
         return ocr_results
 
 def process_image_bytes(contents: bytes) -> List[Dict]:
