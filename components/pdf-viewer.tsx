@@ -70,33 +70,19 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
         const availableH = innerRef.current!.clientHeight
         if (availableW === 0 || availableH === 0) return
         const baseScale = 1.4
-        const desiredScale = baseScale * zoom
-        let viewport = page.getViewport({ scale: desiredScale })
-        let renderWidth = viewport.width
-        let renderHeight = viewport.height
-        let offsetX = 0
-        let offsetY = 0
-        const needsCrop = renderWidth > availableW || renderHeight > availableH
-        if (needsCrop) {
-          renderWidth = availableW
-          renderHeight = availableH
-          offsetX = (viewport.width - availableW) / 2
-          offsetY = (viewport.height - availableH) / 2
-        }
-        canvas.height = renderHeight
-        canvas.width = renderWidth
+        const viewport = page.getViewport({ scale: baseScale * zoom })
+        const offsetX = (availableW - viewport.width) / 2
+        const offsetY = (availableH - viewport.height) / 2
+        canvas.width = availableW
+        canvas.height = availableH
         const renderContext = {
           canvasContext: context,
           viewport: viewport,
         }
-        if (needsCrop) {
-          context.save()
-          context.translate(-offsetX, -offsetY)
-          await page.render(renderContext).promise
-          context.restore()
-        } else {
-          await page.render(renderContext).promise
-        }
+        context.save()
+        context.translate(offsetX, offsetY)
+        await page.render(renderContext).promise
+        context.restore()
        
         // Re-center crop on new page/zoom (using px)
         if (cropMode && canvasRef.current) {
