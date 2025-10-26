@@ -7,7 +7,7 @@ export const analyzeWithGrok = async (ocrSigns: MUTCDSign[]): Promise<MUTCDSign[
   console.log('Sending to Grok:', JSON.stringify(ocrSigns, null, 2));
   try {
     const response = await axios.post('https://api.x.ai/v1/chat/completions', {
-      model: 'grok-beta', // Grok 4 equivalent (use 'grok-4' if available later)
+      model: 'grok-4-fast-reasoning', // Grok 4 equivalent (use 'grok-4' if available later)
       messages: [
         {
           role: 'system',
