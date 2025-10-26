@@ -37,11 +37,16 @@ export default function Home() {
       signs: [],
       selectedPage: 1,
     }))
-    setPdfFiles((prev) => [...prev, ...newPdfs])
-    // Select the first newly uploaded file
-    if (pdfFiles.length === 0) {
-      setSelectedPdfIndex(0)
-    }
+    setPdfFiles((prev) => {
+      const updated = [...prev, ...newPdfs]
+      // Select the first newly uploaded file
+      if (updated.length === 1) { // Only on first file ever
+        setSelectedPdfIndex(0)
+      } else if (newPdfs.length > 0) { // Append and select the last new one
+        setSelectedPdfIndex(updated.length - 1)
+      }
+      return updated
+    })
   }
 
   const handleSignsDetected = (detectedSigns: MUTCDSign[]) => {
