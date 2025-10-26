@@ -8,7 +8,7 @@ const loadTesseract = async () => {
     logger: m => console.log(m), // Optional: Log progress
   });
   await worker.setParameters({
-    tessedit_pageseg_mode: '4', // PSM 4 for table-like (as in Python)
+    tessedit_pageseg_mode: 4, // Changed '4' (string) to 4 (number)
   });
   return worker;
 };
