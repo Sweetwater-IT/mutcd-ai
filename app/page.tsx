@@ -4,7 +4,7 @@ import { useState } from "react"
 import dynamicImport from "next/dynamic"
 import { SignList } from "@/components/sign-list"
 import { RecentFiles, saveToRecentFiles } from "@/components/recent-files"
-import { FileText, Upload, ChevronDown } from "lucide-react"
+import { FileText, Upload, ChevronDown, Crop } from "lucide-react"
 import type { MUTCDSign } from "@/lib/types/mutcd"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -37,11 +37,16 @@ export default function Home() {
       signs: [],
       selectedPage: 1,
     }))
-    setPdfFiles((prev) => [...prev, ...newPdfs])
-    // Select the first newly uploaded file
-    if (pdfFiles.length === 0) {
-      setSelectedPdfIndex(0)
-    }
+    setPdfFiles((prev) => {
+      const updated = [...prev, ...newPdfs]
+      // Select the first newly uploaded file
+      if (updated.length === 1) { // Only on first file ever
+        setSelectedPdfIndex(0)
+      } else if (newPdfs.length > 0) { // Append and select the last new one
+        setSelectedPdfIndex(updated.length - 1)
+      }
+      return updated
+    })
   }
 
   const handleSignsDetected = (detectedSigns: MUTCDSign[]) => {
@@ -154,7 +159,8 @@ export default function Home() {
         </div>
       </header>
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row">
+      {/* Updated <main> section in app/page.tsx (replace the existing <main> block) */}
+      <main className="container mx-auto px-4 py-6 h-[calc(100vh - 6rem)] flex-1 flex flex-row overflow-x-hidden">
         {pdfFiles.length === 0 ? (
           <div className="mx-auto max-w-5xl space-y-8">
             {/* Instructions Section */}
@@ -194,21 +200,41 @@ export default function Home() {
             <RecentFiles onFileSelect={handleRecentFileSelect} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1fr_400px] h-full">
-            {/* PDF Viewer with Crop Box */}
-            <div className="space-y-4 flex-1">
-              <PDFViewer
-                file={currentPdf.file}
-                onSignsDetected={handleSignsDetected}
-                selectedPage={currentPdf.selectedPage}
-                onPageChange={handlePageChange}
-              />
+          <>
+            {/* PDF Viewer Wrapper */}
+            <div className="flex-1 overflow-auto p-4">
+              <div className="space-y-4">
+                {/* Instructions Banner Above PDF Viewer */}
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-primary/10 p-2">
+                      <Crop className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground">How to detect signs</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Click <span className="font-medium text-foreground">"Draw Crop Box"</span> above, then drag to
+                        highlight the area containing traffic signs. The system will automatically analyze and detect
+                        MUTCD signs. Review results in the sidebar and edit as needed.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <PDFViewer
+                  file={currentPdf.file}
+                  onSignsDetected={handleSignsDetected}
+                  selectedPage={currentPdf.selectedPage}
+                  onPageChange={handlePageChange}
+                />
+              </div>
             </div>
             {/* Sign List Sidebar */}
-            <div className="space-y-4">
-              <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
+            <div className="w-80 lg:w-96 shrink-0">
+              <div className="space-y-4 h-full">
+                <SignList signs={currentPdf.signs} onSignsUpdate={handleSignUpdate} pdfFileName={currentPdf.file.name} />
+              </div>
             </div>
-          </div>
+          </>
         )}
       </main>
       <input
