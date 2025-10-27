@@ -226,7 +226,14 @@ const handleStartScan = async () => {
                     loading={<div className="flex items-center justify-center h-full"><p className="text-muted-foreground">Loading PDF...</p></div>}
                     error={<div className="flex items-center justify-center h-full"><p className="text-destructive">Failed to load PDF</p></div>}
                   >
-                    <Page pageNumber={selectedPage} scale={scale} rotate={rotation} renderTextLayer={true} renderAnnotationLayer={true} />
+                    <Page 
+                      pageNumber={selectedPage} 
+                      scale={scale} 
+                      rotate={rotation} 
+                      renderTextLayer={true} 
+                      renderAnnotationLayer={true}
+                      style={{ pointerEvents: 'none' }} // NEW: Forwards mouse events to crop handles (no blocking)
+                     />
                   </Document>
                 </ReactCrop>
               </div>
