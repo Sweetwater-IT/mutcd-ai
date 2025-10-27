@@ -29,7 +29,7 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
   // NEW: Crop state
   const [cropMode, setCropMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [crop, setCrop] = useState<Crop>({ unit: 'px', x: 0, y: 0, width: 0, height: 0 }) // NEW: Initial empty crop (no reset on click)
+  const [crop, setCrop] = useState<Crop | undefined>(undefined)
   const [isAnalyzingGrok, setIsAnalyzingGrok] = useState(false)
   const showCropBox = cropMode && crop && crop.width > 0 && crop.height > 0
 
@@ -61,9 +61,9 @@ export function PDFViewer({ file, onSignsDetected, selectedPage, onPageChange }:
     // No setCrop(undefined) — crop persists now
   }
 
-  const onCropComplete = (newCrop: Crop) => {
+  const onCropChange = (newCrop: Crop) => {
     setCrop(newCrop)
-}
+  }
 
 const handleStartScan = async () => {
   if (!crop || crop.width < 50 || crop.height < 50) return
@@ -138,8 +138,8 @@ const handleStartScan = async () => {
 
   const handleCancelCrop = () => {
     setCropMode(false)
-    setCrop({ unit: 'px', x: 0, y: 0, width: 0, height: 0 }) // NEW: Empty crop (valid type, acts as "cleared")
-}
+    setCrop(undefined)
+  }
 
   // NEW: Overlay style for dimming outside crop
   const pageDiv = pageRef.current
@@ -211,13 +211,11 @@ const handleStartScan = async () => {
                 {/* NEW: React Crop Wrapper */}
                 <ReactCrop
                   crop={crop}
-                  onChange={onCropComplete} // FIXED: Required for live drag (uses your existing function)
-                  onComplete={onCropComplete} // Optional: End event (same function OK)
+                  onChange={onCropChange}
                   minWidth={50}
                   minHeight={50}
                   circularCrop={false}
                   aspect={undefined}
-                  keepSelection={true}
                   style={{ border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' }}
                 >
                   <Document
