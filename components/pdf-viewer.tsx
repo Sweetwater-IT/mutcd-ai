@@ -226,7 +226,16 @@ const handleStartScan = async () => {
                     loading={<div className="flex items-center justify-center h-full"><p className="text-muted-foreground">Loading PDF...</p></div>}
                     error={<div className="flex items-center justify-center h-full"><p className="text-destructive">Failed to load PDF</p></div>}
                   >
-                    <Page pageNumber={selectedPage} scale={scale} rotate={rotation} renderTextLayer={true} renderAnnotationLayer={true} />
+                   <Page 
+                      pageNumber={selectedPage} 
+                      scale={scale} 
+                      rotate={rotation} 
+                      renderTextLayer={true} 
+                      renderAnnotationLayer={true}
+                      onMouseDown={(e) => e.stopPropagation()} // NEW: Forwards drag start to cropper (no capture)
+                      onMouseMove={(e) => e.stopPropagation()} // NEW: Forwards move for live resize
+                      onMouseUp={(e) => e.stopPropagation()} // NEW: Forwards end for complete
+                    />
                   </Document>
                 </ReactCrop>
               </div>
