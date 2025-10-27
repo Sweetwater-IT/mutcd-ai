@@ -232,7 +232,7 @@ const handleStartScan = async () => {
                       rotate={rotation} 
                       renderTextLayer={true} 
                       renderAnnotationLayer={true}
-                      style={{ pointerEvents: 'none' }} // NEW: Forwards mouse events to crop handles (no blocking)
+                      className="pointer-events-none"
                      />
                   </Document>
                 </ReactCrop>
