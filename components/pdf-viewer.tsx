@@ -207,8 +207,9 @@ const handleStartScan = async () => {
             {cropMode ? (
               <>
                 {/* NEW: Dim overlay outside crop */}
-                <div className="absolute inset-0 pointer-events-none" style={overlayStyle} />
+                <div className="absolute inset-0 pointer-events-none z-0" style={overlayStyle} />
                 {/* NEW: React Crop Wrapper */}
+                <div className="relative z-10"> {/* NEW: z-10 wrapper (top layer for handles) */}
                 <ReactCrop
                   crop={crop}
                   onChange={onCropChange}
@@ -228,6 +229,7 @@ const handleStartScan = async () => {
                     <Page pageNumber={selectedPage} scale={scale} rotate={rotation} renderTextLayer={true} renderAnnotationLayer={true} />
                   </Document>
                 </ReactCrop>
+              </div>
               </>
             ) : (
               <Document
