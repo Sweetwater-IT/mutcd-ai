@@ -216,6 +216,7 @@ const handleStartScan = async () => {
                   minHeight={50}
                   circularCrop={false}
                   aspect={undefined}
+                  keepSelection={true}
                   style={{ border: '2px solid #3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.2)' }}
                 >
                   <Document
